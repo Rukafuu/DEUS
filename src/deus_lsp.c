@@ -57,8 +57,12 @@ static char *read_message(void) {
 static const char *field(const char *json, const char *name) {
     char key[96]; int written = snprintf(key, sizeof(key), "\"%s\"", name);
     const char *at = written > 0 && (size_t)written < sizeof(key) ? strstr(json, key) : NULL;
-    if (!at) return NULL; at += strlen(key); while (isspace((unsigned char)*at)) at++;
-    if (*at++ != ':') return NULL; while (isspace((unsigned char)*at)) at++; return at;
+    if (!at) return NULL;
+    at += strlen(key);
+    while (isspace((unsigned char)*at)) at++;
+    if (*at++ != ':') return NULL;
+    while (isspace((unsigned char)*at)) at++;
+    return at;
 }
 
 static char *decode_string(const char *value) {
@@ -128,14 +132,21 @@ static void publish_diagnostics(const Document *document) {
 
 static int position(const char *json, unsigned *line, unsigned *character) {
     const char *at = field(json, "position"), *l, *c;
-    if (!at) return 0; l = field(at, "line"); c = field(at, "character");
-    if (!l || !c) return 0; *line = (unsigned)strtoul(l, NULL, 10); *character = (unsigned)strtoul(c, NULL, 10); return 1;
+    if (!at) return 0;
+    l = field(at, "line");
+    c = field(at, "character");
+    if (!l || !c) return 0;
+    *line = (unsigned)strtoul(l, NULL, 10);
+    *character = (unsigned)strtoul(c, NULL, 10);
+    return 1;
 }
 
 static int word_at(const char *text, unsigned wanted_line, unsigned character, char *word, size_t capacity) {
     const char *line = text, *end, *cursor, *start; unsigned current = 0u; size_t length;
     while (current < wanted_line && *line) { if (*line++ == '\n') current++; }
-    if (current != wanted_line) return 0; end = strchr(line, '\n'); if (!end) end = line + strlen(line);
+    if (current != wanted_line) return 0;
+    end = strchr(line, '\n');
+    if (!end) end = line + strlen(line);
     cursor = line + character; if (cursor > end) cursor = end;
     while (cursor > line && !isalnum((unsigned char)*cursor) && *cursor != '_') cursor--;
     start = cursor; while (start > line && (isalnum((unsigned char)start[-1]) || start[-1] == '_')) start--;
@@ -200,8 +211,9 @@ static void handle_definition(const char *id, const char *json, const Document *
     if (!document->text || !document->uri || !position(json, &wanted_line, &character) || !word_at(document->text, wanted_line, character, word, sizeof(word))) { send_result(id, "null"); return; }
     line = document->text;
     while (*line) {
-        const char *end = strchr(line, '\n'); const char *trim = line; char name[128]; unsigned column;
-        if (!end) end = line + strlen(line); while (trim < end && *trim == ' ') trim++; column = (unsigned)(trim - line);
+        const char *end = strchr(line, '\n'); const char *trim = line; char name[128];
+        if (!end) end = line + strlen(line);
+        while (trim < end && *trim == ' ') trim++;
         if ((declaration_name(trim, "bind", name, sizeof(name)) || declaration_name(trim, "flow", name, sizeof(name))) && !strcmp(name, word)) {
             FILE *tmp = tmpfile(); long size; char *result; if (!tmp) break;
             fputs("{\"uri\":", tmp); json_string(tmp, document->uri);
@@ -224,7 +236,9 @@ int main(void) {
 #endif
     for (;;) {
         char *json = read_message(), *method, *id;
-        if (!json) break; method = decode_string(field(json, "method")); id = request_id(json);
+        if (!json) break;
+        method = decode_string(field(json, "method"));
+        id = request_id(json);
         if (method && !strcmp(method, "initialize") && id) send_result(id, "{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"documentSymbolProvider\":true},\"serverInfo\":{\"name\":\"deus-language-server\",\"version\":\"0.1.0\"}}");
         else if (method && (!strcmp(method, "textDocument/didOpen") || !strcmp(method, "textDocument/didChange"))) { replace_document(&document, json); publish_diagnostics(&document); }
         else if (method && !strcmp(method, "textDocument/didClose")) { free(document.uri); free(document.text); document.uri = document.text = NULL; }
