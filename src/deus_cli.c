@@ -91,7 +91,8 @@ static int valid_package_name(const char *name) {
 static int command_init(const char *directory, const char *template_name) {
     const char *name = strrchr(directory, '\\'); char src[1024], manifest[1024], main_path[1024], ignore[1024];
     const char *program = "genesis\nbind message = \"Hello from DEUS\"\nload message\nemit\nhalt\n";
-    if (!name) name = strrchr(directory, '/'); name = name ? name + 1 : directory;
+    if (!name) name = strrchr(directory, '/');
+    name = name ? name + 1 : directory;
     if (!valid_package_name(name)) { fprintf(stderr, "deus: project directory must end in a package name\n"); return 64; }
     if (strcmp(template_name, "minimal") && strcmp(template_name, "crawler") && strcmp(template_name, "ranking")) {
         fprintf(stderr, "deus: unknown template '%s'\n", template_name); return 64;
@@ -125,7 +126,8 @@ static int command_init(const char *directory, const char *template_name) {
 static char *load_source(const char *path, size_t *length) {
     FILE *file = fopen(path, "rb"); long size; char *source;
     if (!file || fseek(file, 0, SEEK_END) || (size = ftell(file)) < 0) {
-        if (file) fclose(file); return NULL;
+        if (file) fclose(file);
+        return NULL;
     }
     rewind(file); source = (char *)malloc((size_t)size + 1u);
     if (!source || (size && fread(source, 1u, (size_t)size, file) != (size_t)size)) {
