@@ -1,0 +1,64 @@
+name: Language proposal
+description: Propose a change to DEUS language design.
+title: "[Language]: "
+labels: []
+body:
+  - type: textarea
+    id: retrieval_problem
+    attributes:
+      label: What retrieval or search problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: syntax
+    attributes:
+      label: Proposed syntax and examples
+      render: deus
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: textarea
+    id: parser
+    attributes:
+      label: Parser impact
+  - type: textarea
+    id: semantic
+    attributes:
+      label: Semantic impact
+  - type: textarea
+    id: abi
+    attributes:
+      label: ABI impact
+  - type: textarea
+    id: stdlib
+    attributes:
+      label: Could this be solved by the standard library?
+    validations:
+      required: true
+  - type: textarea
+    id: host
+    attributes:
+      label: Could this be solved by a host capability?
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration impact
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Additional examples
+  - type: textarea
+    id: why_language
+    attributes:
+      label: Why should this belong to the language rather than the standard library or host?
+    validations:
+      required: true
