@@ -1,0 +1,13 @@
+# The language describes the information flow; the host performs HUNT.
+omni "net.http2"
+genesis
+limit 4
+retry 2
+
+bind query = "frieren white hair"
+bind page = hunt "https://example.com/search?q={query}"
+bind title = reap page "h1"
+
+load title
+emit
+halt

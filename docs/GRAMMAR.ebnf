@@ -1,0 +1,103 @@
+(* DEUS source grammar, language version 0.1.
+
+   Whitespace separates tokens. A bind whose right-hand side is a pure
+   expression must keep that expression on one physical line. Structured
+   literals may span lines. '#' and '//' start line comments outside strings.
+
+   This grammar describes source syntax. Ordering, types, capabilities and
+   resource bounds are semantic constraints enforced after parsing. *)
+
+program                = { statement } ;
+
+statement              = instruction_statement
+                       | bind_statement
+                       | load_statement
+                       | set_statement
+                       | push_statement ;
+
+instruction_statement  = omni_statement
+                       | simple_instruction
+                       | string_instruction
+                       | unsigned_instruction ;
+
+omni_statement         = "omni" , string ;
+simple_instruction     = "genesis" | "await" | "emit" | "halt" ;
+string_instruction     = ( "hunt" | "reap" | "fork" ) , string ;
+unsigned_instruction   = ( "join" | "limit" | "retry" | "backoff" | "rate" ) ,
+                         unsigned_integer ;
+
+bind_statement         = "bind" , local_name , "=" , bind_expression ;
+load_statement         = "load" , local_name ;
+set_statement          = "set" , local_name , string , local_name ;
+push_statement         = "push" , local_name , local_name ;
+
+bind_expression        = structured_literal
+                       | empty_structure
+                       | hunt_expression
+                       | reap_expression
+                       | json_expression
+                       | get_expression
+                       | at_expression
+                       | pure_expression ;
+
+empty_structure        = "record" | "list" ;
+hunt_expression        = "hunt" , string ;
+reap_expression        = "reap" , local_name , string ;
+json_expression        = "json" , local_name , string ;
+get_expression         = ( "get" | "get?" ) , local_name , string ;
+at_expression          = ( "at" | "at?" ) , local_name , unsigned_integer ;
+
+structured_literal     = record_literal | list_literal ;
+record_literal         = "{" , [ record_member , { "," , record_member } ] , "}" ;
+record_member          = string , ":" , structured_value ;
+list_literal           = "[" , [ structured_value , { "," , structured_value } ] , "]" ;
+structured_value       = literal | local_name | structured_literal ;
+
+(* Pure-expression precedence, from loosest to tightest. Coalescing is
+   right-associative; the remaining repeated binary operators associate left. *)
+pure_expression        = coalesce_expression ;
+coalesce_expression    = logical_or_expression ,
+                         [ "??" , coalesce_expression ] ;
+logical_or_expression  = logical_and_expression ,
+                         { "or" , logical_and_expression } ;
+logical_and_expression = equality_expression ,
+                         { "and" , equality_expression } ;
+equality_expression    = comparison_expression ,
+                         { equality_operator , comparison_expression } ;
+comparison_expression  = unary_expression ,
+                         { comparison_operator , unary_expression } ;
+unary_expression       = "not" , unary_expression | primary_expression ;
+primary_expression     = literal
+                       | local_name
+                       | conversion
+                       | "(" , pure_expression , ")" ;
+conversion             = conversion_name , "(" , pure_expression , ")" ;
+conversion_name        = "text" | "i64" | "bool" ;
+equality_operator      = "==" | "!=" ;
+comparison_operator    = "<" | "<=" | ">" | ">=" ;
+
+literal                = string | integer | boolean | "null" ;
+boolean                = "true" | "false" ;
+integer                = [ "-" ] , unsigned_integer ;
+unsigned_integer       = digit , { digit } ;
+
+(* true, false and null are reserved as local names. A local name may not end
+   in '?'; that suffix is reserved for get? and at?. Other instruction words
+   are context-sensitive and are tokenized as identifiers. *)
+local_name             = identifier ;
+identifier             = identifier_start , { identifier_continue } ;
+identifier_start       = letter | "_" ;
+identifier_continue    = letter | digit | "_" ;
+
+string                 = '"' , { string_character | escape_sequence } , '"' ;
+escape_sequence        = "\\n" | "\\t" | '\\"' | "\\\\" ;
+string_character       = ? any character except '"', '\\', CR or LF ? ;
+
+letter                 = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i"
+                       | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r"
+                       | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"
+                       | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I"
+                       | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R"
+                       | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+digit                  = "0" | "1" | "2" | "3" | "4"
+                       | "5" | "6" | "7" | "8" | "9" ;

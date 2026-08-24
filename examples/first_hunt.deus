@@ -1,0 +1,8 @@
+# The first invocation.
+omni "net.http2"
+genesis
+hunt "https://example.com"
+reap "h1"
+emit
+halt
+

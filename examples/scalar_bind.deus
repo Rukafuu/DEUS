@@ -1,0 +1,17 @@
+# Scalar expressions and a local-to-local copy.
+genesis
+bind title = "Frieren"
+bind year = 2023
+bind verified = true
+bind absent = null
+bind copy = title
+
+load copy
+emit
+load year
+emit
+load verified
+emit
+load absent
+emit
+halt

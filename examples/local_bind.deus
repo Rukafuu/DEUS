@@ -1,0 +1,7 @@
+# A first typed local. BIND consumes the string; LOAD copies it to the stack.
+omni "net.http2"
+genesis
+bind query = "frieren"
+load query
+emit
+halt

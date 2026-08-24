@@ -1,0 +1,16 @@
+# The same compact program shown in the README.
+flow main:
+    bind result = {
+        "title": "Frieren",
+        "year": 2023,
+        "meta": {"verified": true}
+    }
+
+    bind title = get result "title"
+    bind year = get result "year"
+    bind subtitle = get? result "subtitle"
+    bind eligible = year >= 2020
+    bind display = subtitle ?? "Untitled"
+
+    load result
+    emit

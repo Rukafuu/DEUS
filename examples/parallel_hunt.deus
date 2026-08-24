@@ -1,0 +1,17 @@
+omni "net.http2"
+genesis
+
+limit 8
+retry 3
+backoff 100
+rate 20
+
+fork "https://example.com"
+fork "https://example.org"
+join 2
+
+reap "h1"
+emit
+reap "h1"
+emit
+halt

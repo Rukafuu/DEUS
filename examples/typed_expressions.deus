@@ -1,0 +1,17 @@
+# Pure typed expressions remain separate from host effects.
+genesis
+bind score = 95
+bind minimum = 80
+bind verified = true
+bind eligible = verified and score >= minimum
+bind subtitle = null
+bind title = subtitle ?? "Untitled"
+bind score_text = text(score)
+
+load eligible
+emit
+load title
+emit
+load score_text
+emit
+halt

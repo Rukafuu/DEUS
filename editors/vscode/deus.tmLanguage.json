@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "DEUS",
+  "scopeName": "source.deus",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "name": "keyword.control.deus", "match": "\\b(?:get\\?|at\\?)" },
+    { "name": "keyword.control.deus", "match": "\\b(?:flow|omni|genesis|bind|load|set|push|get|at|hunt|json|fork|await|join|limit|retry|backoff|rate|reap|emit|halt)\\b" },
+    { "name": "keyword.operator.logical.deus", "match": "\\b(?:and|or|not)\\b|\\?\\?" },
+    { "name": "keyword.operator.comparison.deus", "match": "==|!=|<=|>=|<|>" },
+    { "name": "support.function.conversion.deus", "match": "\\b(?:text|i64|bool)(?=\\s*\\()" },
+    { "name": "keyword.operator.assignment.deus", "match": "=" },
+    { "name": "constant.language.deus", "match": "\\b(?:true|false|null|record|list)\\b" },
+    { "name": "constant.numeric.integer.deus", "match": "\\b[0-9]+\\b" }
+  ],
+  "repository": {
+    "comments": { "patterns": [
+      { "name": "comment.line.number-sign.deus", "begin": "#", "end": "$" },
+      { "name": "comment.line.double-slash.deus", "begin": "//", "end": "$" }
+    ]},
+    "strings": { "name": "string.quoted.double.deus", "begin": "\"", "end": "\"", "patterns": [
+      { "name": "constant.character.escape.deus", "match": "\\\\(?:[nt\"\\\\])" }
+    ]}
+  }
+}

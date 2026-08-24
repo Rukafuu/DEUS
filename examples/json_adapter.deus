@@ -1,0 +1,16 @@
+# A host-backed API adapter with typed scalar extraction.
+omni "net.http2"
+genesis
+limit 4
+retry 2
+
+bind query = "frieren"
+bind page = hunt "https://catalog.example/api/search?q={query}"
+bind title = json page "$.results[0].title"
+bind year = json page "$.results[0].year"
+
+load title
+emit
+load year
+emit
+halt

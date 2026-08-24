@@ -1,0 +1,20 @@
+# Structured values use the bounded deus_value ownership system.
+genesis
+bind result = {
+  "title": "Frieren",
+  "year": 2023,
+  "meta": {
+    "verified": true
+  }
+}
+
+bind results = [result]
+
+bind first = at results 0
+bind first_title = get first "title"
+load first_title
+emit
+
+load results
+emit
+halt

@@ -1,0 +1,2 @@
+#define IDI_DEUS_ICON 101
+IDI_DEUS_ICON ICON "../assets/deus-logo.ico"

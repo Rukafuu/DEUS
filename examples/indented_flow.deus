@@ -1,0 +1,12 @@
+# Modern DEUS source uses a named, indented flow.
+flow research:
+    bind score = 95
+    bind verified = true
+    bind eligible = verified and score >= 80
+    bind result = {
+        "score": score,
+        "eligible": eligible
+    }
+
+    load result
+    emit

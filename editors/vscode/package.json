@@ -1,0 +1,80 @@
+{
+  "name": "deus-language",
+  "displayName": "DEUS Language",
+  "description": "Language support for DEUS retrieval and crawling programs.",
+  "version": "0.3.0",
+  "publisher": "reskyume",
+  "license": "UNLICENSED",
+  "icon": "images/deus-logo.png",
+  "main": "./extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Snippets"
+  ],
+  "keywords": [
+    "deus",
+    "search",
+    "retrieval",
+    "crawler",
+    "scraping"
+  ],
+  "activationEvents": [
+    "onLanguage:deus",
+    "onCommand:deus.checkFile"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "deus",
+        "aliases": ["DEUS", "deus"],
+        "extensions": [".deus"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/deus-logo.png",
+          "dark": "./images/deus-logo.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "deus",
+        "scopeName": "source.deus",
+        "path": "./deus.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "DEUS",
+      "properties": {
+        "deus.executablePath": {
+          "type": "string",
+          "default": "deus",
+          "scope": "resource",
+          "description": "Path to the DEUS CLI executable used for formatting and diagnostics."
+        },
+        "deus.diagnostics.enable": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Run deus check when a DEUS document is opened or saved."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "deus.checkFile",
+        "title": "DEUS: Check Current File",
+        "category": "DEUS"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "deus",
+        "path": "./snippets/deus.json"
+      }
+    ]
+  }
+}

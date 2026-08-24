@@ -1,0 +1,4 @@
+[package]
+name = "helper"
+version = "1.2.3"
+entry = "src/main.deus"
