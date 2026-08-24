@@ -9,6 +9,8 @@ typedef struct {
     DeusSourceAst *ast;
     DeusDiagnostic *diagnostic;
     size_t capacity;
+    size_t *line_starts;
+    size_t line_start_count;
 } Parser;
 
 static int fail(Parser *parser, unsigned line, unsigned column,
@@ -20,21 +22,47 @@ static int fail(Parser *parser, unsigned line, unsigned column,
     return 0;
 }
 
-static DeusSourcePosition position_at(const char *source, size_t offset) {
-    DeusSourcePosition position = {offset, 1u, 1u};
-    size_t index;
-    for (index = 0u; index < offset; index++) {
-        if (source[index] == '\n') { position.line++; position.column = 1u; }
-        else position.column++;
+static DeusSourcePosition position_at(const Parser *parser, size_t offset) {
+    DeusSourcePosition position; size_t low = 0u, high = parser->line_start_count;
+    while (low + 1u < high) {
+        size_t middle = low + (high - low) / 2u;
+        if (parser->line_starts[middle] <= offset) low = middle;
+        else high = middle;
     }
+    position.offset = offset;
+    position.line = (unsigned)low + 1u;
+    position.column = (unsigned)(offset - parser->line_starts[low]) + 1u;
     return position;
 }
 
-static DeusSourceSpan span_at(const char *source, size_t start, size_t end) {
+static DeusSourceSpan span_at(const Parser *parser, size_t start, size_t end) {
     DeusSourceSpan span;
-    span.start = position_at(source, start);
-    span.end = position_at(source, end);
+    span.start = position_at(parser, start);
+    span.end = position_at(parser, end);
     return span;
+}
+
+static int index_line_starts(Parser *parser) {
+    const char *source = parser->ast->source; size_t length = parser->ast->source_length;
+    size_t count = 1u, index, output = 1u;
+    for (index = 0u; index < length; index++) {
+        if (source[index] == '\r') {
+            if (index + 1u < length && source[index + 1u] == '\n') index++;
+            count++;
+        } else if (source[index] == '\n') count++;
+    }
+    if (count > UINT32_MAX || count > SIZE_MAX / sizeof(*parser->line_starts))
+        return fail(parser, 1u, 1u, "source has too many lines");
+    parser->line_starts = (size_t *)malloc(count * sizeof(*parser->line_starts));
+    if (!parser->line_starts) return fail(parser, 1u, 1u, "out of memory");
+    parser->line_starts[0] = 0u; parser->line_start_count = count;
+    for (index = 0u; index < length; index++) {
+        if (source[index] == '\r') {
+            if (index + 1u < length && source[index + 1u] == '\n') index++;
+            parser->line_starts[output++] = index + 1u;
+        } else if (source[index] == '\n') parser->line_starts[output++] = index + 1u;
+    }
+    return 1;
 }
 
 static int reserve(void **items, size_t *capacity, size_t count,
@@ -124,10 +152,10 @@ static int scan_lines(Parser *parser) {
             return fail(parser, line_number, (unsigned)indent + 1u,
                         "indentation must use multiples of four spaces");
         line.indent = (unsigned)indent;
-        line.depth = (unsigned)(indent / 4u);
+        line.depth = 0u;
         line.owner = DEUS_SOURCE_OWNER_NONE;
-        line.span = span_at(source, logical_start, logical_end);
-        line.content_span = span_at(source, content, logical_end);
+        line.span = span_at(parser, logical_start, logical_end);
+        line.content_span = span_at(parser, content, logical_end);
         if (!reserve((void **)&parser->ast->lines, &line_capacity,
                      parser->ast->line_count + 1u, sizeof(line)))
             return fail(parser, line_number, 1u, "out of memory");
@@ -136,6 +164,63 @@ static int scan_lines(Parser *parser) {
         line_number++;
     }
     return 1;
+}
+
+static int append_layout_event(Parser *parser, size_t *capacity,
+                               DeusSourceLayoutEventKind kind,
+                               size_t line_index, unsigned from_depth,
+                               unsigned to_depth, DeusSourceSpan span) {
+    DeusSourceLayoutEvent event;
+    if (!reserve((void **)&parser->ast->events, capacity,
+                 parser->ast->event_count + 1u, sizeof(event)))
+        return fail(parser, span.start.line, span.start.column, "out of memory");
+    event.kind = kind; event.line_index = line_index;
+    event.from_depth = from_depth; event.to_depth = to_depth; event.span = span;
+    parser->ast->events[parser->ast->event_count++] = event; return 1;
+}
+
+static int build_layout_events(Parser *parser) {
+    size_t index, capacity = 0u; unsigned depth = 0u;
+    for (index = 0u; index < parser->ast->line_count; index++) {
+        DeusSourceLogicalLine *line = &parser->ast->lines[index];
+        unsigned requested = line->indent / 4u;
+        if (line->kind == DEUS_SOURCE_LINE_CONTENT) {
+            while (depth > requested) {
+                if (!append_layout_event(parser, &capacity,
+                                         DEUS_SOURCE_EVENT_DEDENT, index,
+                                         depth, depth - 1u,
+                                         line->content_span)) return 0;
+                depth--;
+            }
+            if (requested > depth) {
+                if (!append_layout_event(parser, &capacity,
+                                         DEUS_SOURCE_EVENT_INDENT, index,
+                                         depth, requested,
+                                         line->content_span)) return 0;
+                depth = requested;
+            }
+            line->depth = depth;
+        } else if (line->kind == DEUS_SOURCE_LINE_COMMENT) line->depth = requested;
+        else line->depth = depth;
+        if (!append_layout_event(parser, &capacity, DEUS_SOURCE_EVENT_LINE,
+                                 index, depth, depth, line->span)) return 0;
+    }
+    while (depth) {
+        DeusSourceSpan eof_span;
+        eof_span.start = position_at(parser, parser->ast->source_length);
+        eof_span.end = eof_span.start;
+        if (!append_layout_event(parser, &capacity, DEUS_SOURCE_EVENT_DEDENT,
+                                 parser->ast->line_count, depth, depth - 1u,
+                                 eof_span)) return 0;
+        depth--;
+    }
+    {
+        DeusSourceSpan eof_span;
+        eof_span.start = position_at(parser, parser->ast->source_length);
+        eof_span.end = eof_span.start;
+        return append_layout_event(parser, &capacity, DEUS_SOURCE_EVENT_EOF,
+                                   parser->ast->line_count, 0u, 0u, eof_span);
+    }
 }
 
 static void trim_span(const char *source, size_t *start, size_t *end) {
@@ -162,7 +247,7 @@ int deus_source_is_modern(const char *source, size_t length) {
             (index + 1u < end && source[index] == '/' && source[index + 1u] == '/')) {
             cursor = next_line(source, length, end); continue;
         }
-        return index == cursor && end - index >= 5u && !memcmp(source + index, "flow ", 5u);
+        return end - index >= 5u && !memcmp(source + index, "flow ", 5u);
     }
     return 0;
 }
@@ -217,8 +302,8 @@ static int parse_limit_entry(Parser *parser, DeusSourceLogicalLine *line,
     if (errno == ERANGE || *tail || strtoul(number, NULL, 10) > UINT32_MAX)
         return fail(parser, line->span.start.line, line->content_span.start.column, "limit value exceeds U32");
     entry.span = line->span;
-    entry.name_span = span_at(source, name_start, name_end);
-    entry.value_span = span_at(source, value_start, value_end);
+    entry.name_span = span_at(parser, name_start, name_end);
+    entry.value_span = span_at(parser, value_start, value_end);
     if (!reserve((void **)&block->entries, capacity, block->entry_count + 1u, sizeof(entry)))
         return fail(parser, line->span.start.line, 1u, "out of memory");
     block->entries[block->entry_count++] = entry; *seen |= bit; return 1;
@@ -230,12 +315,15 @@ int deus_source_parse_modern(const char *source, size_t length,
     int limits_seen = 0; unsigned active_depth = 0u;
     if (!out || !diagnostic || (!source && length)) return 0;
     memset(out, 0, sizeof(*out)); memset(diagnostic, 0, sizeof(*diagnostic));
-    parser.ast = out; parser.diagnostic = diagnostic; parser.capacity = 0u;
+    memset(&parser, 0, sizeof(parser));
+    parser.ast = out; parser.diagnostic = diagnostic;
     if (length > DEUS_MAX_SECTION) return fail(&parser, 1u, 1u, "source is too large");
     out->source = (char *)malloc(length + 1u);
     if (!out->source) return fail(&parser, 1u, 1u, "out of memory");
     if (length) memcpy(out->source, source, length); out->source[length] = '\0'; out->source_length = length;
+    if (!index_line_starts(&parser)) goto failed;
     if (!scan_lines(&parser)) goto failed;
+    if (!build_layout_events(&parser)) goto failed;
     for (index = 0u; index < out->line_count; index++) {
         DeusSourceLogicalLine *line = &out->lines[index];
         size_t start, end, name_start, name_end;
@@ -249,7 +337,7 @@ int deus_source_parse_modern(const char *source, size_t length,
         out->flow.name = (char *)malloc(name_end - name_start + 1u);
         if (!out->flow.name) { fail(&parser, line->span.start.line, 1u, "out of memory"); goto failed; }
         memcpy(out->flow.name, out->source + name_start, name_end - name_start); out->flow.name[name_end - name_start] = '\0';
-        out->flow.name_span = span_at(out->source, name_start, name_end); out->flow.span.start = line->span.start; break;
+        out->flow.name_span = span_at(&parser, name_start, name_end); out->flow.span.start = line->span.start; break;
     }
     if (flow_line == SIZE_MAX) { fail(&parser, 1u, 1u, "expected `flow <name>:`"); goto failed; }
     for (index = flow_line + 1u; index < out->line_count;) {
@@ -258,7 +346,6 @@ int deus_source_parse_modern(const char *source, size_t length,
             line->owner = active_depth == 2u ? DEUS_SOURCE_OWNER_LIMITS : DEUS_SOURCE_OWNER_FLOW; line->depth = active_depth ? active_depth : 1u; index++; continue;
         }
         if (line->depth == 0u) { fail(&parser, line->span.start.line, 1u, "unexpected top-level content after flow declaration"); goto failed; }
-        if (line->depth > active_depth + 1u && active_depth) { fail(&parser, line->span.start.line, 1u, "indentation jumps more than one block level"); goto failed; }
         if (line->depth != 1u) { fail(&parser, line->span.start.line, 1u, "flow items must be indented by four spaces"); goto failed; }
         active_depth = 1u; line->owner = DEUS_SOURCE_OWNER_FLOW;
         {
@@ -267,9 +354,10 @@ int deus_source_parse_modern(const char *source, size_t length,
             if (end - start == 7u && !memcmp(out->source + start, "limits:", 7u)) {
                 size_t entry_capacity = 0u; unsigned seen = 0u; size_t entry_start;
                 if (limits_seen) { fail(&parser, line->span.start.line, line->content_span.start.column, "multiple `limits` blocks are not allowed"); goto failed; }
-                limits_seen = 1; item.kind = DEUS_SOURCE_FLOW_LIMITS; item.as.limits.span.start = line->span.start; entry_start = ++index; active_depth = 2u;
+                limits_seen = 1; item.kind = DEUS_SOURCE_FLOW_LIMITS; item.as.limits.span.start = line->content_span.start; entry_start = ++index; active_depth = 2u;
                 while (index < out->line_count) {
                     DeusSourceLogicalLine *entry_line = &out->lines[index];
+                    if (entry_line->kind == DEUS_SOURCE_LINE_COMMENT && entry_line->depth <= 1u) break;
                     if (entry_line->kind != DEUS_SOURCE_LINE_CONTENT) { entry_line->owner = DEUS_SOURCE_OWNER_LIMITS; entry_line->depth = 2u; index++; continue; }
                     if (entry_line->depth <= 1u) break;
                     if (entry_line->depth != 2u) { free(item.as.limits.entries); fail(&parser, entry_line->span.start.line, 1u, "limits entries must be indented by eight spaces"); goto failed; }
@@ -281,13 +369,22 @@ int deus_source_parse_modern(const char *source, size_t length,
                 item.span.end = item.as.limits.span.end;
                 if (!append_item(&parser, item, &item_capacity)) { free(item.as.limits.entries); goto failed; } active_depth = 1u; continue;
             }
+            if (end - start >= 6u && !memcmp(out->source + start, "limits", 6u) &&
+                (end - start == 6u || out->source[start + 6u] == ':' ||
+                 out->source[start + 6u] == ' ' || out->source[start + 6u] == '\t')) {
+                fail(&parser, line->span.start.line, line->content_span.start.column,
+                     "expected `limits:` followed by an indented block");
+                goto failed;
+            }
             item.kind = DEUS_SOURCE_FLOW_RAW; item.as.raw = line->span;
             if (!append_item(&parser, item, &item_capacity)) goto failed;
         }
         index++;
     }
     if (!out->flow.item_count) { fail(&parser, out->flow.span.start.line, 1u, "flow requires an indented body"); goto failed; }
-    out->flow.span.end = out->flow.items[out->flow.item_count - 1u].span.end; return 1;
+    out->flow.span.end = out->flow.items[out->flow.item_count - 1u].span.end;
+    free(parser.line_starts); return 1;
 failed:
+    free(parser.line_starts);
     deus_source_ast_free(out); return 0;
 }

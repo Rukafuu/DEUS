@@ -1,4 +1,5 @@
 #include "deus.h"
+#include "deus_formatter.h"
 #include "deus_project.h"
 
 #include <stdio.h>
@@ -10,6 +11,12 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <windows.h>
+#define DEUS_PATH_SEPARATOR '\\'
+#define deus_mkdir(path) _mkdir(path)
+#else
+#include <sys/stat.h>
+#define DEUS_PATH_SEPARATOR '/'
+#define deus_mkdir(path) mkdir(path, 0700)
 #endif
 
 #define DEUS_VERSION "0.1.0"
@@ -55,44 +62,18 @@ static int replace_text(const char *path, const char *text) {
 }
 
 static int command_fmt(const char *path, int check_only) {
-    size_t length, output_length = 0u, capacity; char *source = load_source(path, &length);
-    char *formatted; DeusProgram program; DeusDiagnostic diagnostic = {0}; unsigned depth = 0u;
+    size_t length, output_length = 0u; char *source = load_source(path, &length);
+    char *formatted = NULL; DeusProgram program; DeusDiagnostic diagnostic = {0};
     if (!source) { fprintf(stderr, "deus: cannot read %s\n", path); return 66; }
     if (!deus_parse_source(source, length, &program, &diagnostic)) {
         show_diagnostic(path, source, length, &diagnostic); free(source); return 65;
     }
     deus_program_free(&program);
-    capacity = length * 3u + 3u; formatted = (char *)malloc(capacity);
-    if (!formatted) { free(source); fprintf(stderr, "deus: out of memory\n"); return 74; }
-    for (size_t at = 0u; at < length;) {
-        size_t start = at, end, content, trim; int in_string = 0, escaped = 0, comment = 0;
-        while (at < length && source[at] != '\n' && source[at] != '\r') at++;
-        end = at; while (at < length && (source[at] == '\n' || source[at] == '\r')) at++;
-        content = start; while (content < end && (source[content] == ' ' || source[content] == '\t')) content++;
-        trim = end; while (trim > content && (source[trim - 1u] == ' ' || source[trim - 1u] == '\t')) trim--;
-        if (content < trim && (source[content] == '}' || source[content] == ']') && depth) depth--;
-        if (content < trim) {
-            for (unsigned indent = 0u; indent < depth * 2u; indent++) formatted[output_length++] = ' ';
-            memcpy(formatted + output_length, source + content, trim - content); output_length += trim - content;
-        }
-        formatted[output_length++] = '\n';
-        for (size_t cursor = content; cursor < trim; cursor++) {
-            char character = source[cursor];
-            if (comment) break;
-            if (in_string) {
-                if (escaped) escaped = 0;
-                else if (character == '\\') escaped = 1;
-                else if (character == '"') in_string = 0;
-            } else if (character == '"') in_string = 1;
-            else if (character == '#' || (character == '/' && cursor + 1u < trim && source[cursor + 1u] == '/')) comment = 1;
-            else if (character == '{' || character == '[') depth++;
-            else if ((character == '}' || character == ']') && cursor != content && depth) depth--;
-        }
+    if (!deus_format_source(source, length, &formatted, &output_length, &diagnostic)) {
+        if (diagnostic.message[0]) show_diagnostic(path, source, length, &diagnostic);
+        else fprintf(stderr, "deus: out of memory\n");
+        free(source); return diagnostic.message[0] && strcmp(diagnostic.message, "out of memory") ? 65 : 74;
     }
-    formatted[output_length] = '\0';
-    while (output_length > 1u && formatted[output_length - 1u] == '\n' && formatted[output_length - 2u] == '\n')
-        formatted[--output_length] = '\0';
-    if (!output_length || formatted[output_length - 1u] != '\n') { formatted[output_length++] = '\n'; formatted[output_length] = '\0'; }
     if (length == output_length && !memcmp(source, formatted, length)) {
         printf("%s: formatted\n", path); free(formatted); free(source); return 0;
     }
@@ -121,15 +102,11 @@ static int command_init(const char *directory, const char *template_name) {
     else if (!strcmp(template_name, "ranking")) program =
         "genesis\nbind score = 95\nbind minimum = 80\n"
         "bind eligible = score >= minimum\nload eligible\nemit\nhalt\n";
-#ifdef _WIN32
-    if (_mkdir(directory)) { fprintf(stderr, "deus: cannot create %s (it may already exist)\n", directory); return 73; }
-#else
-    (void)directory; fprintf(stderr, "deus: init is currently supported on Windows\n"); return 69;
-#endif
-    if (snprintf(src, sizeof(src), "%s\\src", directory) < 0 || _mkdir(src) ||
-        snprintf(manifest, sizeof(manifest), "%s\\deus.toml", directory) < 0 ||
-        snprintf(main_path, sizeof(main_path), "%s\\src\\main.deus", directory) < 0 ||
-        snprintf(ignore, sizeof(ignore), "%s\\.gitignore", directory) < 0) {
+    if (deus_mkdir(directory)) { fprintf(stderr, "deus: cannot create %s (it may already exist)\n", directory); return 73; }
+    if (snprintf(src, sizeof(src), "%s%csrc", directory, DEUS_PATH_SEPARATOR) < 0 || deus_mkdir(src) ||
+        snprintf(manifest, sizeof(manifest), "%s%cdeus.toml", directory, DEUS_PATH_SEPARATOR) < 0 ||
+        snprintf(main_path, sizeof(main_path), "%s%csrc%cmain.deus", directory, DEUS_PATH_SEPARATOR, DEUS_PATH_SEPARATOR) < 0 ||
+        snprintf(ignore, sizeof(ignore), "%s%c.gitignore", directory, DEUS_PATH_SEPARATOR) < 0) {
         fprintf(stderr, "deus: cannot create project layout\n"); return 73;
     }
     {
@@ -141,7 +118,8 @@ static int command_init(const char *directory, const char *template_name) {
             fprintf(stderr, "deus: cannot write project files\n"); return 74;
         }
     }
-    printf("created %s (%s)\nnext: deus run %s\\src\\main.deus\n", directory, template_name, directory); return 0;
+    printf("created %s (%s)\nnext: deus run %s%csrc%cmain.deus\n", directory, template_name,
+           directory, DEUS_PATH_SEPARATOR, DEUS_PATH_SEPARATOR); return 0;
 }
 
 static char *load_source(const char *path, size_t *length) {
@@ -214,12 +192,13 @@ static int command_input(const char *command, const char *input, const char *out
     }
     if (!strcmp(command, "build") && project.manifest_path[0] && !output_path) {
         char target[DEUS_PROJECT_PATH_MAX]; int written;
-        written = snprintf(target, sizeof(target), "%s\\target", project.root);
+        written = snprintf(target, sizeof(target), "%s%ctarget", project.root, DEUS_PATH_SEPARATOR);
         if (written < 0 || (size_t)written >= sizeof(target) ||
-            (_mkdir(target) && errno != EEXIST)) {
+            (deus_mkdir(target) && errno != EEXIST)) {
             fprintf(stderr, "deus: cannot create project target directory\n"); return 73;
         }
-        written = snprintf(project_output, sizeof(project_output), "%s\\%s.deusb", target, project.name);
+        written = snprintf(project_output, sizeof(project_output), "%s%c%s.deusb", target,
+                           DEUS_PATH_SEPARATOR, project.name);
         if (written < 0 || (size_t)written >= sizeof(project_output)) {
             fprintf(stderr, "deus: project output path is too long\n"); return 74;
         }

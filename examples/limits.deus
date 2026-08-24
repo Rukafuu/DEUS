@@ -1,0 +1,8 @@
+flow crawler:
+    limits:
+        workers 8
+        retry 3
+        backoff 100
+        rate 20
+
+    bind query = "frieren"

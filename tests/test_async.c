@@ -24,6 +24,17 @@ static void mock_release(void *context, DeusHostDocument *document) {
     MockHostState *state = (MockHostState *)context; state->releases++; memset(document, 0, sizeof(*document));
 }
 
+static int mock_html_hunt(void *context, const char *url, size_t url_length,
+                          DeusHostDocument *document, char *error, size_t error_cap) {
+    static const char body[] =
+        "<main><h1 id=\"title\" class=\"hero featured\">Hello <span>nested <em>inline</em></span> HTML</h1></main>";
+    MockHostState *state = (MockHostState *)context;
+    (void)error; (void)error_cap;
+    if (url_length != 11u || memcmp(url, "deus://html", 11u)) return 0;
+    state->hunts++; document->data = body; document->length = sizeof(body) - 1u;
+    document->status = 200u; document->token = NULL; return 1;
+}
+
 static DWORD WINAPI serve_client(LPVOID context) {
     Client *client = (Client *)context; char request[1024];
     recv(client->socket, request, sizeof(request), 0); Sleep(700);
@@ -117,6 +128,28 @@ static int test_embedded_host(void) {
     deus_program_free(&program); return ok;
 }
 
+static int test_nested_reap(void) {
+    const char *source =
+        "omni \"net.http2\"\ngenesis\n"
+        "bind page = hunt \"deus://html\"\n"
+        "bind by_tag = reap page \"h1\"\nload by_tag\nemit\n"
+        "bind by_class = reap page \".featured\"\nload by_class\nemit\n"
+        "bind by_id = reap page \"#title\"\nload by_id\nemit\nhalt\n";
+    const char *line = "Hello nested inline HTML\n";
+    DeusProgram program; DeusDiagnostic diagnostic = {0}; MockHostState state = {0};
+    DeusHost host = {DEUS_HOST_ABI_VERSION, DEUS_HOST_CAP_NETWORK, &state, mock_html_hunt, mock_release};
+    FILE *output = NULL; char text[96] = {0};
+    if (!deus_parse_source(source, strlen(source), &program, &diagnostic)) return 0;
+    if (fopen_s(&output, "deus_reap_output.txt", "wb") || !output) { deus_program_free(&program); return 0; }
+    int exit_code = deus_vm_execute_program_with_host(&program, output, &host); fclose(output); output = NULL;
+    if (fopen_s(&output, "deus_reap_output.txt", "rb") || !output) { deus_program_free(&program); return 0; }
+    size_t read = fread(text, 1, sizeof(text) - 1u, output); fclose(output); remove("deus_reap_output.txt");
+    size_t line_length = strlen(line); int ok = exit_code == 0 && state.hunts == 1u && state.releases == 1u &&
+        read == line_length * 3u && !memcmp(text, line, line_length) &&
+        !memcmp(text + line_length, line, line_length) && !memcmp(text + line_length * 2u, line, line_length);
+    deus_program_free(&program); return ok;
+}
+
 static int test_operational_diagnostics(void) {
     const char *wrong_type = "genesis\nbind value = 42\nbind title = reap value \"h1\"\nhalt\n";
     const char *late_config = "genesis\nhunt \"https://example.test\"\nlimit 2\nreap \"h1\"\nemit\nhalt\n";
@@ -141,6 +174,7 @@ int main(void) {
     if (!test_expressions()) { fprintf(stderr, "expression VM test failed\n"); return 1; }
     if (!test_compounds()) { fprintf(stderr, "compound VM test failed\n"); return 1; }
     if (!test_embedded_host()) { fprintf(stderr, "embedded host test failed\n"); return 1; }
+    if (!test_nested_reap()) { fprintf(stderr, "nested reap test failed\n"); return 1; }
     if (!test_operational_diagnostics()) { fprintf(stderr, "operational diagnostic test failed\n"); return 1; }
     WSADATA wsa; if (WSAStartup(MAKEWORD(2, 2), &wsa)) return 1;
     Server server = {0}; server.listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

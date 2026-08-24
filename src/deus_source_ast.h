@@ -36,6 +36,21 @@ typedef struct {
 } DeusSourceLogicalLine;
 
 typedef enum {
+    DEUS_SOURCE_EVENT_LINE,
+    DEUS_SOURCE_EVENT_INDENT,
+    DEUS_SOURCE_EVENT_DEDENT,
+    DEUS_SOURCE_EVENT_EOF
+} DeusSourceLayoutEventKind;
+
+typedef struct {
+    DeusSourceLayoutEventKind kind;
+    size_t line_index;
+    unsigned from_depth;
+    unsigned to_depth;
+    DeusSourceSpan span;
+} DeusSourceLayoutEvent;
+
+typedef enum {
     DEUS_SOURCE_LIMIT_WORKERS,
     DEUS_SOURCE_LIMIT_RETRY,
     DEUS_SOURCE_LIMIT_BACKOFF,
@@ -83,11 +98,15 @@ typedef struct {
     size_t source_length;
     DeusSourceLogicalLine *lines;
     size_t line_count;
+    DeusSourceLayoutEvent *events;
+    size_t event_count;
     DeusSourceFlowDecl flow;
 } DeusSourceAst;
 
 void deus_source_ast_free(DeusSourceAst *ast);
 const DeusSourceLogicalLine *deus_source_ast_lines(const DeusSourceAst *ast,
                                                    size_t *count);
+const DeusSourceLayoutEvent *deus_source_ast_events(const DeusSourceAst *ast,
+                                                    size_t *count);
 
 #endif

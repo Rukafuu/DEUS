@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a focused improvement to DEUS.
+title: "[Feature]: "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Explain the user or information-pipeline problem, not only the desired feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: scope
+    attributes:
+      label: Language, host, or standard-library scope
+      description: Explain why this belongs in that layer.
+    validations:
+      required: true

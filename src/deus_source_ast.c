@@ -12,6 +12,7 @@ void deus_source_ast_free(DeusSourceAst *ast) {
     }
     free(ast->flow.items);
     free(ast->flow.name);
+    free(ast->events);
     free(ast->lines);
     free(ast->source);
     memset(ast, 0, sizeof(*ast));
@@ -21,4 +22,10 @@ const DeusSourceLogicalLine *deus_source_ast_lines(const DeusSourceAst *ast,
                                                    size_t *count) {
     if (count) *count = ast ? ast->line_count : 0u;
     return ast ? ast->lines : NULL;
+}
+
+const DeusSourceLayoutEvent *deus_source_ast_events(const DeusSourceAst *ast,
+                                                    size_t *count) {
+    if (count) *count = ast ? ast->event_count : 0u;
+    return ast ? ast->events : NULL;
 }
