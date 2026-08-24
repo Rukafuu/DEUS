@@ -5,3 +5,5 @@
 /deus_project_test_tmp/
 *.deusb
 .DS_Store
+editors/vscode/
+website/
