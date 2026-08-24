@@ -22,7 +22,8 @@ All integers are little-endian. The fixed header is 40 bytes:
 
 Each interned string is `u32 length` followed by UTF-8 bytes. Readers validate
 the magic, ABI, offsets, section limits, CRC32, opcodes, string indices, local
-slots, and fixed operands before execution.
+slots, fixed operands, and that both v1 header fields `flags` and `reserved`
+remain zero before execution.
 
 ## Opcode alphabet
 

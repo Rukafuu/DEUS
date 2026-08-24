@@ -71,6 +71,10 @@ add_executable(deus_tests tests/test_deus.c)
 target_link_libraries(deus_tests PRIVATE deuscore)
 add_test(NAME deus_format_roundtrip COMMAND deus_tests)
 
+add_executable(deus_malformed_tests tests/test_malformed.c)
+target_link_libraries(deus_malformed_tests PRIVATE deuscore)
+add_test(NAME deus_hostile_inputs COMMAND deus_malformed_tests)
+
 add_executable(deus_value_tests tests/test_values.c)
 target_link_libraries(deus_value_tests PRIVATE deuscore)
 add_test(NAME deus_values COMMAND deus_value_tests)
