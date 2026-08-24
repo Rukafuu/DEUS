@@ -84,7 +84,7 @@ try {
     New-Item -ItemType Directory -Force -Path $editorPath | Out-Null
     Copy-Item -LiteralPath $vsixPath -Destination $editorPath
 
-    foreach ($executable in @("deus.exe", "deusc.exe", "deusvm.exe")) {
+    foreach ($executable in @("deus.exe", "deusc.exe", "deusvm.exe", "deus-language-server.exe")) {
         if (-not (Test-Path -LiteralPath (Join-Path $stageRoot "bin\$executable") -PathType Leaf)) {
             throw "Installed package is missing bin\$executable."
         }

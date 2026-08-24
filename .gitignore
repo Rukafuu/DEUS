@@ -1,5 +1,7 @@
 /target/
 /build/
 /build-*/
+/dist/
+/deus_project_test_tmp/
 *.deusb
 .DS_Store

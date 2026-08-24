@@ -1,7 +1,9 @@
 # Projects, modules and dependencies
 
-`deus init` creates a project rooted at `deus.toml`. Version 0.1 recognizes the
-manifest as a product contract; source execution still uses an explicit path.
+`deus init` creates a project rooted at `deus.toml`. `deus run`, `deus check`
+and `deus build` accept a source file, a project directory, or the path to its
+`deus.toml` manifest. A project build without `-o` writes
+`target/<package>.deusb`.
 
 ```toml
 [package]
@@ -36,7 +38,8 @@ media.decode       host capability
 A dependency can provide code; it cannot grant authority. Capabilities remain
 an explicit agreement between manifest, bytecode validation and host policy.
 
-The staged dependency plan is local/path dependencies, manifest validation,
-`deus.lock`, Git dependencies, an official package index, and only then a public
-registry if demand justifies its security and governance cost. No registry or
-version resolver is implied by the current manifest.
+Version 0.1 validates local/path dependencies and writes a deterministic
+`deus.lock` when a project command runs. Each dependency path must contain a
+valid `deus.toml`, and its package name must match the dependency key. Remote,
+Git and registry dependencies are intentionally unsupported. A dependency can
+declare code, but never grants a capability to the application.

@@ -1,9 +1,11 @@
 #include "deus.h"
+#include "deus_project.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -20,9 +22,9 @@ static void usage(FILE *output) {
     fprintf(output,
         "DEUS %s - search and crawling language\n\n"
         "usage:\n"
-        "  deus run <file.deus>\n"
-        "  deus check <file.deus>\n"
-        "  deus build <file.deus> [-o file.deusb]\n"
+        "  deus run <file.deus|project>\n"
+        "  deus check <file.deus|project>\n"
+        "  deus build <file.deus|project> [-o file.deusb]\n"
         "  deus exec <file.deusb>\n"
         "  deus fmt [--check] <file.deus>\n"
         "  deus init <directory> [--template minimal|crawler|ranking]\n"
@@ -202,6 +204,30 @@ static int command_source(const char *command, const char *path, const char *out
     deus_program_free(&program); return rc;
 }
 
+static int command_input(const char *command, const char *input, const char *output_path) {
+    DeusProject project; char error[512], project_output[DEUS_PROJECT_PATH_MAX];
+    if (!deus_project_resolve_input(input, &project, error, sizeof(error))) {
+        fprintf(stderr, "deus: %s\n", error); return 65;
+    }
+    if (project.manifest_path[0] && !deus_project_write_lock(&project, error, sizeof(error))) {
+        fprintf(stderr, "deus: %s\n", error); return 74;
+    }
+    if (!strcmp(command, "build") && project.manifest_path[0] && !output_path) {
+        char target[DEUS_PROJECT_PATH_MAX]; int written;
+        written = snprintf(target, sizeof(target), "%s\\target", project.root);
+        if (written < 0 || (size_t)written >= sizeof(target) ||
+            (_mkdir(target) && errno != EEXIST)) {
+            fprintf(stderr, "deus: cannot create project target directory\n"); return 73;
+        }
+        written = snprintf(project_output, sizeof(project_output), "%s\\%s.deusb", target, project.name);
+        if (written < 0 || (size_t)written >= sizeof(project_output)) {
+            fprintf(stderr, "deus: project output path is too long\n"); return 74;
+        }
+        output_path = project_output;
+    }
+    return command_source(command, project.entry_path, output_path);
+}
+
 static int command_exec(const char *path) {
     DeusProgram program; char error[192]; int rc;
     if (!deus_read_binary(path, &program, error, sizeof(error))) {
@@ -237,13 +263,13 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(command, "check") || !strcmp(command, "run")) {
         if (argc != 3) { usage(stderr); return 64; }
-        return command_source(command, argv[2], NULL);
+        return command_input(command, argv[2], NULL);
     }
     if (!strcmp(command, "build")) {
         const char *output = NULL;
         if (argc == 5 && !strcmp(argv[3], "-o")) output = argv[4];
         else if (argc != 3) { usage(stderr); return 64; }
-        return command_source(command, argv[2], output);
+        return command_input(command, argv[2], output);
     }
     fprintf(stderr, "deus: unknown command '%s'\n", command); usage(stderr); return 64;
 }

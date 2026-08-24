@@ -86,6 +86,7 @@ deus build <file.deus> [-o file.deusb]
 deus exec <file.deusb>
 deus fmt [--check] <file.deus>
 deus init <directory> [--template minimal|crawler|ranking]
+deus-language-server
 deus version
 deus help
 ```
@@ -93,6 +94,10 @@ deus help
 `build` derives the `.deusb` path when `-o` is omitted. Diagnostics show the
 source line and a caret at the failing column. `deusc.exe` and `deusvm.exe`
 remain available as compatibility tools.
+
+`deus-language-server` speaks LSP over standard input/output and uses the same
+native parser as the compiler. It provides live diagnostics, keyword hover,
+document symbols, and same-file definition lookup.
 
 Install the executables into a standalone prefix:
 

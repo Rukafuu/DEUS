@@ -15,6 +15,7 @@ endif()
 add_library(deuscore STATIC
   src/deus_format.c
   src/deus_json.c
+  src/deus_project.c
   src/deus_lexer.c
   src/deus_expression.c
   src/deus_layout.c
@@ -37,11 +38,14 @@ target_link_libraries(deusvmcore PRIVATE deuscore)
 add_executable(deus src/deus_cli.c)
 target_link_libraries(deus PRIVATE deuscore deusvmcore)
 
+add_executable(deus-language-server src/deus_lsp.c)
+target_link_libraries(deus-language-server PRIVATE deuscore)
+
 add_executable(deusvm src/deusvm.c)
 target_include_directories(deusvm PRIVATE src)
 target_link_libraries(deusvm PRIVATE deuscore)
 
-install(TARGETS deus deusc deusvm RUNTIME DESTINATION bin)
+install(TARGETS deus deusc deusvm deus-language-server RUNTIME DESTINATION bin)
 install(FILES assets/deus-logo.png assets/deus-logo.ico DESTINATION share/deus)
 
 if(WIN32)
@@ -59,6 +63,10 @@ else()
 endif()
 
 enable_testing()
+add_test(NAME deus_lsp_protocol
+  COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+    -File ${CMAKE_SOURCE_DIR}/scripts/test-lsp.ps1
+    -Server $<TARGET_FILE:deus-language-server>)
 add_executable(deus_tests tests/test_deus.c)
 target_link_libraries(deus_tests PRIVATE deuscore)
 add_test(NAME deus_format_roundtrip COMMAND deus_tests)
@@ -76,6 +84,11 @@ add_executable(deus_json_tests tests/test_json.c)
 target_include_directories(deus_json_tests PRIVATE src)
 target_link_libraries(deus_json_tests PRIVATE deuscore)
 add_test(NAME deus_json_scalars COMMAND deus_json_tests)
+
+add_executable(deus_project_tests tests/test_project.c)
+target_include_directories(deus_project_tests PRIVATE src)
+target_link_libraries(deus_project_tests PRIVATE deuscore)
+add_test(NAME deus_project_manifest COMMAND deus_project_tests)
 
 if(WIN32)
   add_executable(deus_async_tests tests/test_async.c)

@@ -7,6 +7,8 @@ Official language support for `.deus` retrieval and crawling programs, published
 - syntax highlighting, comments, brackets and indentation;
 - formatting through `deus fmt` (`Format Document`);
 - diagnostics through `deus check` when a file is opened or saved;
+- live native-parser diagnostics while editing;
+- keyword hover, document outline and same-file definition lookup;
 - **DEUS: Check Current File** command;
 - snippets for programs, bindings, output, records and HTTP retrieval.
 
@@ -19,6 +21,7 @@ Install the DEUS CLI separately and ensure `deus` is on `PATH`, or configure its
 ```json
 {
   "deus.executablePath": "C:\\tools\\deus\\deus.exe",
+  "deus.languageServerPath": "C:\\tools\\deus\\deus-language-server.exe",
   "deus.diagnostics.enable": true,
   "[deus]": {
     "editor.defaultFormatter": "reskyume.deus-language",
@@ -27,7 +30,7 @@ Install the DEUS CLI separately and ensure `deus` is on `PATH`, or configure its
 }
 ```
 
-`deus.executablePath` is passed directly to the operating system without a shell. Diagnostics can be disabled per workspace or folder with `deus.diagnostics.enable`.
+Both executable paths are passed directly to the operating system without a shell. Diagnostics can be disabled per workspace or folder with `deus.diagnostics.enable`.
 
 ## Troubleshooting
 

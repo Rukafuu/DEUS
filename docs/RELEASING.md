@@ -26,6 +26,9 @@ The script builds the configured CMake tree, installs its runtime targets and
 assets into an isolated staging directory, then adds documentation, examples,
 and the version-matched VSIX. Output is written to `dist/` by default:
 
+The installed runtime set includes `deus.exe`, the compatibility compiler and
+VM executables, and `deus-language-server.exe` for editor integration.
+
 ```text
 deus-<version>-windows-x64.zip
 deus-<version>-windows-x64.zip.sha256

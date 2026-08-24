@@ -1,6 +1,9 @@
+#ifdef _WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include "deus_project.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,16 +16,20 @@
 #define mkdir_one(path) mkdir(path, 0700)
 #endif
 
+#define CHECK(condition) do { if (!(condition)) { \
+    fprintf(stderr, "check failed at %s:%d: %s\n", __FILE__, __LINE__, #condition); abort(); \
+} } while (0)
+
 static void write_file(const char *path, const char *text) {
-    FILE *file = fopen(path, "wb"); assert(file);
-    assert(fwrite(text, 1u, strlen(text), file) == strlen(text)); assert(!fclose(file));
+    FILE *file = fopen(path, "wb"); CHECK(file);
+    CHECK(fwrite(text, 1u, strlen(text), file) == strlen(text)); CHECK(!fclose(file));
 }
 
 static char *read_file(const char *path) {
-    FILE *file = fopen(path, "rb"); long size; char *text; assert(file);
-    assert(!fseek(file, 0, SEEK_END)); size = ftell(file); assert(size >= 0); rewind(file);
-    text = (char *)malloc((size_t)size + 1u); assert(text);
-    assert(fread(text, 1u, (size_t)size, file) == (size_t)size); text[size] = '\0'; fclose(file); return text;
+    FILE *file = fopen(path, "rb"); long size; char *text; CHECK(file);
+    CHECK(!fseek(file, 0, SEEK_END)); size = ftell(file); CHECK(size >= 0); rewind(file);
+    text = (char *)malloc((size_t)size + 1u); CHECK(text);
+    CHECK(fread(text, 1u, (size_t)size, file) == (size_t)size); text[size] = '\0'; fclose(file); return text;
 }
 
 int main(void) {
@@ -42,14 +49,14 @@ int main(void) {
     write_file("deus_project_test_tmp\\deus.toml",
                "[package]\nname = \"app\"\nversion = \"0.1.0\"\nentry = \"src/main.deus\"\n\n"
                "[capabilities]\nnetwork = true\n\n[dependencies]\nhelper = { path = \"dep\" }\n");
-    assert(deus_project_resolve_input(root, &project, error, sizeof(error)));
-    assert(!strcmp(project.name, "app")); assert(project.network_declared == 1);
-    assert(project.dependency_count == 1u); assert(!strcmp(project.dependencies[0].version, "1.2.3"));
-    assert(deus_project_write_lock(&project, error, sizeof(error)));
+    CHECK(deus_project_resolve_input(root, &project, error, sizeof(error)));
+    CHECK(!strcmp(project.name, "app")); CHECK(project.network_declared == 1);
+    CHECK(project.dependency_count == 1u); CHECK(!strcmp(project.dependencies[0].version, "1.2.3"));
+    CHECK(deus_project_write_lock(&project, error, sizeof(error)));
     first = read_file("deus_project_test_tmp\\deus.lock");
-    assert(strstr(first, "name = \"helper\"")); assert(strstr(first, "path = \"dep\""));
-    assert(deus_project_write_lock(&project, error, sizeof(error)));
-    second = read_file("deus_project_test_tmp\\deus.lock"); assert(!strcmp(first, second));
+    CHECK(strstr(first, "name = \"helper\"")); CHECK(strstr(first, "path = \"dep\""));
+    CHECK(deus_project_write_lock(&project, error, sizeof(error)));
+    second = read_file("deus_project_test_tmp\\deus.lock"); CHECK(!strcmp(first, second));
     free(first); free(second);
     puts("project manifest and lockfile tests passed"); return 0;
 }

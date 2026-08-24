@@ -55,6 +55,12 @@
           "scope": "resource",
           "description": "Path to the DEUS CLI executable used for formatting and diagnostics."
         },
+        "deus.languageServerPath": {
+          "type": "string",
+          "default": "deus-language-server",
+          "scope": "resource",
+          "description": "Path to the native DEUS language server executable."
+        },
         "deus.diagnostics.enable": {
           "type": "boolean",
           "default": true,
