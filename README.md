@@ -1,14 +1,14 @@
-# DEUS — Decoupled Extended Unitary Script
+# DEUS: Decoupled Extended Unitary Script
 
 <p align="center">
   <img src="assets/deus-logo.png" alt="DEUS language logo" width="260">
 </p>
 
-[![Windows](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows)](https://learn.microsoft.com/windows/)
+[![Platforms](https://img.shields.io/badge/Tooling-Windows%20%7C%20Linux%20%7C%20macOS-0078D4)](docs/PORTABILITY.md)
 [![CMake](https://img.shields.io/badge/Build-CMake-064F8C?logo=cmake)](https://cmake.org/)
 [![C17](https://img.shields.io/badge/Implementation-C17-00599C?logo=c)](https://en.wikipedia.org/wiki/C17_(C_standard_revision))
 [![ABI](https://img.shields.io/badge/Bytecode_ABI-v1-8A2BE2)](docs/BYTECODE.md)
-[![Status](https://img.shields.io/badge/Status-Experimental-FF6B6B)](#project-status)
+[![Status](https://img.shields.io/badge/Status-Experimental-FF6B6B)](#open-source-and-community)
 
 DEUS is an experimental language for describing safe information acquisition,
 retrieval, extraction, and composition pipelines. It is not a general-purpose
@@ -22,44 +22,39 @@ work such as HTTP requests, index access, storage, embeddings, or media decoding
 DEUS source → compiler → validated bytecode → bounded VM → authorized host
 ```
 
-The reference implementation is native C17 for Windows, with no Node.js, Python,
-Rust, or managed runtime dependency.
+The reference implementation is native C17. Language tooling can be built on
+Windows, Linux and macOS; the reference VM and WinHTTP host remain Windows-only.
+See the [platform support matrix](docs/PORTABILITY.md).
 
 ## A DEUS program in 30 seconds
 
-New users should begin with [Getting Started](docs/GETTING_STARTED.md). The
-documentation then continues through the [Language Tour](docs/LANGUAGE_TOUR.md),
-[Cookbook](docs/COOKBOOK.md), and [Reference](docs/REFERENCE.md).
-
 ```deus
-flow main:
-    bind result = {
-        "title": "Frieren",
-        "year": 2023,
-        "meta": {"verified": true}
-    }
+genesis
 
-    bind title = get result "title"
-    bind year = get result "year"
-    bind subtitle = get? result "subtitle"
-    bind eligible = year >= 2020
-    bind display = subtitle ?? "Untitled"
+bind result = {
+  "title": "Frieren",
+  "year": 2023,
+  "meta": {"verified": true}
+}
 
-    load result
-    emit
+bind title = get result "title"
+bind year = get result "year"
+bind subtitle = get? result "subtitle"
+bind eligible = year >= 2020
+bind display = subtitle ?? "Untitled"
+
+load result
+emit
+halt
 ```
 
 DEUS supports typed locals, structured values, optional reads, pure expressions,
 and compact JSON output. `emit` writes values directly without adding separators
 or newlines, leaving output framing to the program or host.
 
-`flow <name>:` is the modern source form. Its four-space indentation is
-structural; `genesis` and `halt` are generated automatically. Flat legacy source
-remains accepted during the migration period.
-
 ## Build and run
 
-Requirements:
+Requirements for the complete Windows runtime:
 
 - Windows 10 or later;
 - Visual Studio 2022 Build Tools with Desktop development with C++;
@@ -84,9 +79,6 @@ deus run <file.deus>
 deus check <file.deus>
 deus build <file.deus> [-o file.deusb]
 deus exec <file.deusb>
-deus fmt [--check] <file.deus>
-deus init <directory> [--template minimal|crawler|ranking]
-deus-language-server
 deus version
 deus help
 ```
@@ -95,19 +87,14 @@ deus help
 source line and a caret at the failing column. `deusc.exe` and `deusvm.exe`
 remain available as compatibility tools.
 
-`deus-language-server` speaks LSP over standard input/output and uses the same
-native parser as the compiler. It provides live diagnostics, keyword hover,
-document symbols, and same-file definition lookup.
-
 Install the executables into a standalone prefix:
 
 ```powershell
 cmake --install build --config Release --prefix dist
 ```
 
-The official logo is embedded in the Windows executables and installed under
-`share/deus` in PNG and multi-resolution ICO formats. Source assets live in
-`assets/`.
+The official logo is installed under `share/deus/deus-logo.png`. The source asset
+is kept in `assets/deus-logo.png`.
 
 ### VS Code extension
 
@@ -119,97 +106,92 @@ and auto-closing pairs:
 cd editors\vscode
 npx @vscode/vsce package
 code --install-extension deus-language-0.1.0.vsix
-```
+s capabilities and may currently provide `hunt` through
+`DEUS_HOST_CAP_NETWORK`. Returned documents are borrowed: the VM copies them under
+its 32 MiB response limit and invokes `release_document` exactly once. Host
+callbacks used by `FORK` must be thread-safe.
 
-## Language concepts
+`deus_vm_execute_program` remains the compatibility entry point and selects the
+native WinHTTP reference host. A supplied host does not initialize WinHTTP.
 
-### Typed values and locals
+## Value system
 
-```deus
-bind query = "frieren white hair"
-bind year = 2023
-bind verified = true
-bind missing = null
-bind copied_year = year
-```
+The foundation of the adapter language defines `null`, booleans, `i64`, UTF-8
+strings, bytes, lists, records, HTTP documents, futures, and structured errors in
+`include/deus_value.h`. Allocated values use shared references; `deus_value_copy`,
+`deus_value_move`, and `deus_value_dispose` make ownership explicit. Futures accept a
+finalizer for the native resource they encapsulate.
 
-Names have program scope, cannot be rebound, and may only be introduced after
-`genesis`. The value system provides `Null`, `Bool`, signed `I64`, UTF-8 `String`,
-`Bytes`, `List`, `Record`, `Document`, `Future`, and structured `Error` values.
+Each value family belongs to a `DeusValueContext`, which enforces memory budgets and
+limits for nesting depth, items, fields, and blobs. Composite values reject cycles
+and cross-context references, preventing refcount cycles and ambiguous lifetimes.
+The context must live until all of its values are discarded.
 
-### Indented flows
+This module does not change the ABI v1 or add opcodes. The existing VM remains
+compatible while the new AST and semantic analysis pipeline is introduced in later
+increments.
 
-```deus
-flow research:
-    bind score = 95
-    bind eligible = score >= 80
+## Compiler pipeline
 
-    load eligible
-    emit
-```
-
-Modern programs have a named top-level flow and a four-space body. Tabs are
-rejected, indentation uses multiples of four, and blank/comment lines do not
-change ownership. Structured literals may indent further. Phase 1 supports one
-top-level flow; nested `limits`, `parallel`, `rule`, and pipeline blocks will build
-on the same layout contract. See
-[RFC-0001](docs/RFC-0001-INDENTED-FLOWS.md).
-
-### Records and lists
-
-```deus
-bind candidate = {
-  "title": "Frieren",
-  "score": 95,
-  "tags": ["elf", "mage"],
-  "meta": {"verified": true}
-}
-
-bind candidates = [candidate]
-bind first = at candidates 0
-bind title = get first "title"
-bind subtitle = get? first "subtitle"
-bind tenth = at? candidates 9
-```
-
-`get` and `at` are strict; missing data is an error. `get?` and `at?` return
-`Null` for absence, while a container of the wrong type remains an error.
-Literals may contain scalars, previously bound locals, or nested literals and
-are bounded to 32 structured levels. Explicit `record`, `list`, `set`, and
-`push` forms remain available.
-
-### Typed expressions
-
-```deus
-bind eligible = verified and score >= 80
-bind changed = score != previous_score
-bind display = subtitle ?? "Untitled"
-bind score_text = text(score)
-bind parsed_score = i64("95")
-bind enabled = bool(1)
-bind inverted = not false
-```
-
-Precedence, from tightest to loosest:
+`deus_parse_source` is a compatibility facade over independent stages:
 
 ```text
-parentheses and conversions
-not
-<  <=  >  >=
-==  !=
-and
-or
-??
+source → lexer → parser → AST → semantic analysis → ABI v1 bytecode generation
 ```
 
-Ordering currently requires `I64`. Equality accepts scalar values. Controlled
-conversions accept `String`, `I64`, or `Bool`; integer text must be complete and
-within range, while boolean text must be exactly `true` or `false`. Expressions
-are limited to 64 nested levels and cannot perform host effects.
+Tokens carry line and column information; AST nodes have typed operands and their own
+string ownership. Stack effect analysis, executor limits, and interning happen only
+after parsing. Unknown instructions may include a short suggestion without altering
+the diagnostic format consumed by the CLI.
 
-## Retrieval and extraction
+## Binary alphabet — ABI v1
 
-### Host-backed crawling
+| Byte | Mnemonic | Operand | Stack effect |
+| --- | --- | --- | --- |
+| `0x01` | `OMNI` | `u32` index | loads module |
+| `0x02` | `GENESIS` | — | starts execution |
+| `0x03` | `HUNT` | `u32` URL index | `[] → [Document]` |
+| `0x04` | `REAP` | `u32` selector index | `[Document] → [Text]` |
+| `0x05` | `HALT` | — | terminates immediately |
+| `0x06` | `EMIT` | — | `[Text] → []` and writes to stdout |
+| `0x07` | `FORK` | `u32` URL index | `[] → [Future]` |
+| `0x08` | `AWAIT` | — | `[Future] → [Document]` |
+| `0x09` | `JOIN` | `u32` count | `[Future × N] → [Document × N]` |
+| `0x0A` | `LIMIT` | `u32` workers | sets concurrency, `1..256` |
+| `0x0B` | `RETRY` | `u32` attempts | configures retries, `0..16` |
+| `0x0C` | `BACKOFF` | `u32` milliseconds | exponential backoff base |
+| `0x0D` | `RATE` | `u32` requests/s | global limiter; `0` disables it |
+| `0x0E` | `CONST` | `u32` string index | `[] → [String]`; allocates a constant copy |
+| `0x0F` | `BIND` | `u32` local slot | `[Value] → []`; moves into an empty slot |
+| `0x10` | `LOAD` | `u32` local slot | `[] → [Value]`; pushes an independent copy |
+| `0x11` | `CONST_NULL` | — | `[] → [Null]` |
+| `0x12` | `CONST_BOOL` | `u32` (`0` or `1`) | `[] → [Bool]` |
+| `0x13` | `CONST_I64` | signed `i64` | `[] → [I64]` |
+
+All integers use little-endian encoding. The fixed header is:
+
+```text
+0x00  byte[8] magic = 44 45 55 53 42 00 01 00
+0x08  u16     ABI version
+0x0A  u16     flags
+0x0C  u32     string count
+0x10  u32     string section offset
+0x14  u32     string section length
+0x18  u32     bytecode offset
+0x1C  u32     bytecode length
+0x20  u32     payload CRC32
+0x24  u32     reserved
+```
+
+Each string is `u32 length + UTF-8 bytes`. The VM validates the magic, ABI, offsets,
+limits, CRC32, opcodes, and indices before execution begins.
+
+`CONST`, `BIND`, `LOAD`, and the scalar constants are additive ABI v1 instructions. Current readers
+still accept every earlier v1 program. Programs may define at most 256 locals;
+`BIND` transfers ownership and `LOAD` creates an independent copy. Uninitialized
+slots and rebinding are rejected.
+
+## Syntax
 
 ```deus
 omni "net.http2"
@@ -218,33 +200,8 @@ limit 8
 retry 3
 backoff 100
 rate 20
-
-bind query = "frieren white hair"
-bind page = hunt "https://catalog.test/search?q={query}"
-bind title = reap page "h1"
-
-load title
-emit
-halt
-```
-
-`hunt` produces a `Document`; `reap` extracts text from it. URL placeholders
-accept earlier `String`, `I64`, or `Bool` locals and are percent-encoded as URL
-components. URLs are limited to 8 KiB.
-
-The reference host uses WinHTTP with connection reuse, timeouts, gzip/deflate,
-a 32 MiB response cap, and rejection of non-2xx responses.
-
-### Concurrency and budgets
-
-```deus
-genesis
-limit 4
-retry 2
-backoff 100
-rate 10
-fork "https://example.test/a"
-fork "https://example.test/b"
+fork "https://example.com"
+fork "https://example.org"
 join 2
 reap "h1"
 emit
@@ -253,113 +210,64 @@ emit
 halt
 ```
 
-`FORK` uses event-driven futures on the Windows thread pool. `JOIN N` preserves
-document order. Executor settings must precede network execution.
-
-### Bounded JSON extraction
+String locals use an explicit stack-oriented form:
 
 ```deus
-bind page = hunt "https://catalog.test/api?q={query}"
-bind title = json page "$.results[0].title"
-bind year = json page "$.results[0].year"
-bind verified = json page "$.results[0].verified"
+genesis
+bind query = "frieren"
+load query
+emit
+halt
 ```
 
-Paths support object fields and zero-based array indices. This version extracts
-`String`, signed `I64`, `Bool`, or `Null`; compound JSON results, fractional
-numbers, and exponent notation are not yet supported. Processing is bounded to
-64 levels and 8,192 tokens, with UTF-8 and Unicode escape validation.
+`bind` accepts strings, signed `i64`, booleans, `null`, and an already-bound local.
+Names have program scope, cannot be redeclared, and may only be used after
+`genesis`. `EMIT` writes scalars as UTF-8 text. HTTP expressions, interpolation,
+lists, and records will build on the same typed AST.
 
-## Capability boundary
+Comments begin with `#` or `//`. ABI v1 accepts simple tag selectors,
+`.class`, and `#id`. The linter requires exactly one `genesis`, one terminal
+`halt`, and validates stack effects, pending futures, numeric limits, and the
+position of executor settings. `LIMIT`, `RETRY`, `BACKOFF`, and `RATE` must appear
+before the first `FORK`. `JOIN N` preserves the original document order.
 
-DEUS programs never gain authority merely by naming a module. Hosts declare
-capabilities before execution. The public `DeusHost` ABI currently supports a
-bounded network `hunt` capability through `deus_vm_execute_program_with_host`.
+## Native Windows build
 
-Successful host documents are borrowed. The VM copies them under its limits and
-calls `release_document` exactly once. `FORK` callbacks may run concurrently, so
-host implementations must be thread-safe.
+With Visual Studio Build Tools (Desktop development with C++) and CMake:
 
-Pure evaluation belongs to the VM. Credentials, HTTP policy, indexes, storage,
-models, embeddings, and media decoding belong to authorized hosts. See
-[DESIGN.md](DESIGN.md) for the project constitution and feature-admission rule.
-
-## Safety and determinism
-
-- fixed bytecode header, version checks, section validation, and CRC32;
-- bounded memory, values, blobs, nesting, locals, URLs, and responses;
-- reference-counted ownership with cycle and cross-context rejection;
-- typed semantic analysis before bytecode generation;
-- explicit host capability checks;
-- no arbitrary filesystem access, processes, FFI, pointers, reflection, or raw
-  threads in the language;
-- deterministic joined-document order and record serialization.
-
-## Architecture
-
-```text
-source.deus
-    ├─ lexer
-    ├─ statement parser + recursive Expression AST
-    ├─ semantic analysis and type checks
-    └─ ABI v1 bytecode generation
-             ├─ deus run: execute in memory
-             └─ deus build: write validated .deusb
-                            ↓
-                      bounded stack VM
-                            ↓
-                    authorized host capabilities
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-| Path | Responsibility |
-| --- | --- |
-| `include/deus.h` | Public bytecode and host ABI |
-| `include/deus_value.h` | Bounded shared value API |
-| `src/deus_lexer.c` | Tokens, positions, strings, and operators |
-| `src/deus_expression.c` | Recursive expression parser and precedence |
-| `src/deus_layout.c` | Significant-indentation validation and flow lowering |
-| `src/deus_parser.c` | Statements, operational expressions, and literals |
-| `src/deus_semantic.c` | Types, effects, lowering, and bytecode generation |
-| `src/deus_format.c` | `.deusb` encoding, validation, and CRC32 |
-| `src/deus_value.c` | Ownership, composites, limits, and JSON serialization |
-| `src/deus_json.c` | Bounded JSON scalar extraction |
-| `src/deusvm.c` | VM, concurrency, WinHTTP reference host, and extraction |
-| `src/deus_cli.c` | Unified native CLI |
-| `tests/` | Format, values, compiler, JSON, VM, host, concurrency, and CLI tests |
+Usage:
 
-The physical ABI is documented in [docs/BYTECODE.md](docs/BYTECODE.md).
-The complete source syntax is specified in [docs/GRAMMAR.ebnf](docs/GRAMMAR.ebnf).
+```powershell
+.\build\Release\deusc.exe check examples\first_hunt.deus
+.\build\Release\deusc.exe build examples\first_hunt.deus -o first_hunt.deusb
+.\build\Release\deusvm.exe first_hunt.deusb
+```
 
-## Project status
+The network layer uses WinHTTP and negotiates HTTP/2 over TLS when both the server and
+system support it. It includes timeouts, gzip/deflate support, rejection of non-2xx
+statuses, and a 32 MiB response cap. A single `HINTERNET` handle is shared to allow
+connection reuse. The executor uses the Windows Thread Pool, a concurrency semaphore,
+event-driven futures, global rate limiting, and retries with exponential backoff
+capped at 60 s.
 
-DEUS is experimental, but the repository already provides a usable vertical
-slice:
+## Open source and community
 
-- native `check`, `run`, `build`, and `exec` workflow;
-- typed locals and recursive pure expressions;
-- records, lists, optional access, and JSON output;
-- host-backed crawling, extraction, futures, retries, and global rate limiting;
-- versioned bytecode and host ABIs;
-- strict `/W4 /WX` release build;
-- eight automated test targets passing on the Windows reference build.
+DEUS is an open source project with maintainer-led governance. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines,
+[SUPPORT.md](SUPPORT.md) for official support through GitHub Issues, and
+[GOVERNANCE.md](GOVERNANCE.md) for project decision-making.
 
-Current v1 gaps:
+Security reports should follow [SECURITY.md](SECURITY.md) rather than a public
+issue. Release planning and announcements are tracked through GitHub Issues.
+The project maintainer is [reskyume](https://github.com/reskyume), with updates
+at [GitHub](https://github.com/rukafuu) and
+[LinkedIn](https://linkedin.com/in/rukafuu).
 
-- compound JSON extraction;
-- richer HTML selectors and document metadata;
-- per-domain rate limits, redirect policy, cancellation, and `robots.txt`;
-- structured partial failures for concurrent retrieval;
-- packaged VS Code extension and formatter;
-- signed and distributed Windows binaries;
-- candidate filtering, provenance, scoring, and ranking pipelines.
-
-The next language phase is retrieval-native composition: candidates, filters,
-scoring, ranking, and provenance. General-purpose operating-system features remain
-deliberately out of scope.
-
-## Bytecode compatibility
-
-`.deusb` uses a fixed 40-byte header, little-endian operands, interned UTF-8
-strings, bounded sections, and a payload CRC32. The current physical ABI is v1.
-Additive opcodes remain ABI v1 while older programs stay valid and decoding stays
-unambiguous. Incompatible physical changes require a new ABI.
+The source code is licensed under the [Apache License 2.0](LICENSE). The DEUS
+name and official assets are covered separately by [TRADEMARKS.md](TRADEMARKS.md).

@@ -12,6 +12,13 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
+#endif
+#ifndef S_ISREG
+#define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #define DEUS_SEP '\\'
@@ -47,12 +54,12 @@ static int join_path(char *target, size_t capacity, const char *left, const char
 
 static int is_directory(const char *path) {
     struct stat info;
-    return stat(path, &info) == 0 && (info.st_mode & S_IFDIR) != 0;
+    return stat(path, &info) == 0 && S_ISDIR(info.st_mode);
 }
 
 static int file_exists(const char *path) {
     struct stat info;
-    return stat(path, &info) == 0 && (info.st_mode & S_IFREG) != 0;
+    return stat(path, &info) == 0 && S_ISREG(info.st_mode);
 }
 
 static void parent_path(char *path) {

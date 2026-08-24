@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Added contextual highlighting for `limits:` and its `workers`, `retry`, `backoff`, and `rate` entries.
+- Added indentation-aware folding for nested colon blocks.
+- Added a modern `flowlimits` snippet while preserving legacy snippets and highlighting.
+
 ## 0.3.0
 
 - Added document formatting through `deus fmt` using an isolated temporary file.

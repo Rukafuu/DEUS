@@ -33,30 +33,30 @@ static char *read_file(const char *path) {
 }
 
 int main(void) {
-    const char *root = "deus_project_test_tmp", *dep = "deus_project_test_tmp\\dep";
+    const char *root = "deus_project_test_tmp", *dep = "deus_project_test_tmp/dep";
     DeusProject project; char error[512] = ""; char *first, *second;
-    (void)remove("deus_project_test_tmp\\deus.lock");
-    (void)remove("deus_project_test_tmp\\src\\main.deus");
-    (void)remove("deus_project_test_tmp\\dep\\src\\main.deus");
-    (void)remove("deus_project_test_tmp\\deus.toml");
-    (void)remove("deus_project_test_tmp\\dep\\deus.toml");
-    (void)mkdir_one(root); (void)mkdir_one("deus_project_test_tmp\\src");
-    (void)mkdir_one(dep); (void)mkdir_one("deus_project_test_tmp\\dep\\src");
-    write_file("deus_project_test_tmp\\src\\main.deus", "genesis halt\n");
-    write_file("deus_project_test_tmp\\dep\\src\\main.deus", "genesis halt\n");
-    write_file("deus_project_test_tmp\\dep\\deus.toml",
+    (void)remove("deus_project_test_tmp/deus.lock");
+    (void)remove("deus_project_test_tmp/src/main.deus");
+    (void)remove("deus_project_test_tmp/dep/src/main.deus");
+    (void)remove("deus_project_test_tmp/deus.toml");
+    (void)remove("deus_project_test_tmp/dep/deus.toml");
+    (void)mkdir_one(root); (void)mkdir_one("deus_project_test_tmp/src");
+    (void)mkdir_one(dep); (void)mkdir_one("deus_project_test_tmp/dep/src");
+    write_file("deus_project_test_tmp/src/main.deus", "genesis halt\n");
+    write_file("deus_project_test_tmp/dep/src/main.deus", "genesis halt\n");
+    write_file("deus_project_test_tmp/dep/deus.toml",
                "[package]\nname = \"helper\"\nversion = \"1.2.3\"\nentry = \"src/main.deus\"\n");
-    write_file("deus_project_test_tmp\\deus.toml",
+    write_file("deus_project_test_tmp/deus.toml",
                "[package]\nname = \"app\"\nversion = \"0.1.0\"\nentry = \"src/main.deus\"\n\n"
                "[capabilities]\nnetwork = true\n\n[dependencies]\nhelper = { path = \"dep\" }\n");
     CHECK(deus_project_resolve_input(root, &project, error, sizeof(error)));
     CHECK(!strcmp(project.name, "app")); CHECK(project.network_declared == 1);
     CHECK(project.dependency_count == 1u); CHECK(!strcmp(project.dependencies[0].version, "1.2.3"));
     CHECK(deus_project_write_lock(&project, error, sizeof(error)));
-    first = read_file("deus_project_test_tmp\\deus.lock");
+    first = read_file("deus_project_test_tmp/deus.lock");
     CHECK(strstr(first, "name = \"helper\"")); CHECK(strstr(first, "path = \"dep\""));
     CHECK(deus_project_write_lock(&project, error, sizeof(error)));
-    second = read_file("deus_project_test_tmp\\deus.lock"); CHECK(!strcmp(first, second));
+    second = read_file("deus_project_test_tmp/deus.lock"); CHECK(!strcmp(first, second));
     free(first); free(second);
     puts("project manifest and lockfile tests passed"); return 0;
 }

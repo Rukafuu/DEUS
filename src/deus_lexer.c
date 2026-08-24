@@ -13,7 +13,11 @@ static void emit_diagnostic(DeusDiagnostic *diagnostic, const DeusLexer *lexer,
 }
 
 static void advance(DeusLexer *lexer) {
-    if (*lexer->cursor++ == '\n') { lexer->line++; lexer->column = 1u; }
+    char character = *lexer->cursor++;
+    if (character == '\r') {
+        if (lexer->cursor < lexer->end && *lexer->cursor == '\n') lexer->cursor++;
+        lexer->line++; lexer->column = 1u;
+    } else if (character == '\n') { lexer->line++; lexer->column = 1u; }
     else lexer->column++;
 }
 
@@ -21,10 +25,10 @@ static void skip_trivia(DeusLexer *lexer) {
     for (;;) {
         while (lexer->cursor < lexer->end && isspace((unsigned char)*lexer->cursor)) advance(lexer);
         if (lexer->cursor < lexer->end && *lexer->cursor == '#') {
-            while (lexer->cursor < lexer->end && *lexer->cursor != '\n') advance(lexer);
+            while (lexer->cursor < lexer->end && *lexer->cursor != '\n' && *lexer->cursor != '\r') advance(lexer);
         } else if ((size_t)(lexer->end - lexer->cursor) >= 2u &&
                    lexer->cursor[0] == '/' && lexer->cursor[1] == '/') {
-            while (lexer->cursor < lexer->end && *lexer->cursor != '\n') advance(lexer);
+            while (lexer->cursor < lexer->end && *lexer->cursor != '\n' && *lexer->cursor != '\r') advance(lexer);
         } else break;
     }
 }

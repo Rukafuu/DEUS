@@ -138,6 +138,10 @@ int deus_lexer_next(DeusLexer *lexer, DeusToken *token, DeusDiagnostic *diagnost
 void deus_token_dispose(DeusToken *token);
 int deus_parse_ast(const char *source, size_t length, DeusAstProgram *out,
                    DeusDiagnostic *diagnostic);
+int deus_parse_ast_fragment(const char *source, size_t length,
+                            uint32_t hidden_symbol_base,
+                            DeusAstProgram *out,
+                            DeusDiagnostic *diagnostic);
 void deus_ast_free(DeusAstProgram *program);
 void deus_expression_free(DeusExpressionNode *expression);
 int deus_parse_expression(const char *source, size_t length, DeusExpressionNode **out,

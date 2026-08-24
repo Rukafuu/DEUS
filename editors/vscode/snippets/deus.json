@@ -1,4 +1,18 @@
 {
+  "Flow with limits": {
+    "prefix": "flowlimits",
+    "body": [
+      "flow ${1:main}:",
+      "    limits:",
+      "        workers ${2:8}",
+      "        retry ${3:3}",
+      "        backoff ${4:100}",
+      "        rate ${5:20}",
+      "",
+      "    ${0:bind result = null}"
+    ],
+    "description": "Create a modern indented flow with bounded execution limits"
+  },
   "DEUS program": {
     "prefix": "genesis",
     "body": ["genesis", "${1:bind value = null}", "halt"],

@@ -7,7 +7,19 @@
    This grammar describes source syntax. Ordering, types, capabilities and
    resource bounds are semantic constraints enforced after parsing. *)
 
-program                = { statement } ;
+program                = modern_program | legacy_program ;
+
+modern_program         = flow_header , newline , flow_body ;
+flow_header            = "flow" , identifier , ":" ;
+flow_body              = { blank_line | comment_line | flow_item } ;
+flow_item              = indent_1 , ( limits_block | statement ) , newline ;
+limits_block           = "limits:" , newline , { limits_line } ;
+limits_line            = blank_line | comment_line
+                       | indent_2 , limits_entry , newline ;
+limits_entry           = limits_name , unsigned_integer ;
+limits_name            = "workers" | "retry" | "backoff" | "rate" ;
+
+legacy_program         = { statement } ;
 
 statement              = instruction_statement
                        | bind_statement
@@ -101,3 +113,13 @@ letter                 = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i"
                        | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
 digit                  = "0" | "1" | "2" | "3" | "4"
                        | "5" | "6" | "7" | "8" | "9" ;
+
+(* Layout terminals are lexical contracts. indent_1 is exactly four spaces;
+   indent_2 is exactly eight. Tabs are invalid. Blank and comment-only lines do
+   not change ownership. newline accepts LF, CRLF, or CR. *)
+indent_1               = "    " ;
+indent_2               = "        " ;
+newline                = LF | CR , [ LF ] ;
+blank_line             = { " " } , newline ;
+comment_line           = { " " } , ( "#" | "//" ) ,
+                         { ? any character except CR or LF ? } , newline ;

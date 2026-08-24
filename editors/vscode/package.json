@@ -2,9 +2,9 @@
   "name": "deus-language",
   "displayName": "DEUS Language",
   "description": "Language support for DEUS retrieval and crawling programs.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "reskyume",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "icon": "images/deus-logo.png",
   "main": "./extension.js",
   "engines": {
