@@ -28,7 +28,8 @@ static DeusExpressionNode *primary(ExpressionParser *parser) {
     DeusExpressionNode *result;
     if (++parser->depth > 64u) { snprintf(parser->diagnostic->message, sizeof(parser->diagnostic->message), "expression exceeds 64 levels"); return NULL; }
     if (parser->token.kind == DEUS_TOKEN_LPAREN) {
-        if (!next(parser)) return NULL; result = parse_coalesce(parser);
+        if (!next(parser)) return NULL;
+        result = parse_coalesce(parser);
         if (!result || parser->token.kind != DEUS_TOKEN_RPAREN) { deus_expression_free(result); snprintf(parser->diagnostic->message, sizeof(parser->diagnostic->message), "expected ')'"); return NULL; }
         if (!next(parser)) { deus_expression_free(result); return NULL; }
     } else if (word(&parser->token, "text") || word(&parser->token, "i64") || word(&parser->token, "bool")) {
@@ -120,7 +121,8 @@ static DeusExpressionNode *parse_coalesce(ExpressionParser *parser) {
 int deus_parse_expression(const char *source, size_t length, DeusExpressionNode **out,
                           DeusDiagnostic *diagnostic) {
     ExpressionParser parser = {0}; *out = NULL; deus_lexer_init(&parser.lexer, source, length); parser.diagnostic = diagnostic;
-    if (!next(&parser)) return 0; *out = parse_coalesce(&parser);
+    if (!next(&parser)) return 0;
+    *out = parse_coalesce(&parser);
     if (!*out || parser.token.kind != DEUS_TOKEN_EOF) {
         if (*out && !diagnostic->message[0]) snprintf(diagnostic->message, sizeof(diagnostic->message), "unexpected token after expression");
         deus_expression_free(*out); *out = NULL; deus_token_dispose(&parser.token); return 0;

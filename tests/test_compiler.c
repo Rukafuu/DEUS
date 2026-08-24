@@ -154,7 +154,7 @@ static int test_typed_expressions(void) {
     for (uint32_t index = 0; index < program.code_count; index++) {
         uint8_t opcode = program.code[index].opcode;
         if (opcode >= DEUS_EQUAL && opcode <= DEUS_GREATER_EQUAL) comparisons++;
-        if (opcode >= DEUS_BOOL_AND && opcode <= DEUS_BOOL_NOT) boolean++;
+        if (opcode >= DEUS_BOOL_NOT && opcode <= DEUS_BOOL_OR) boolean++;
         if (opcode == DEUS_COALESCE) fallback++;
         if (opcode >= DEUS_TO_TEXT && opcode <= DEUS_TO_BOOL) conversions++;
     }

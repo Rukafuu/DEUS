@@ -3,6 +3,15 @@
 #include <stdio.h>
 #include <string.h>
 
+static FILE *open_temporary_file(void) {
+#ifdef _MSC_VER
+    FILE *file = NULL;
+    return tmpfile_s(&file) == 0 ? file : NULL;
+#else
+    return tmpfile();
+#endif
+}
+
 static int finalized;
 static void finalize(void *payload) { finalized += *(int *)payload; }
 
@@ -32,7 +41,8 @@ int main(void) {
         !require(deus_value_record_set(&record, "score", 5u, &(DeusValue){DEUS_VALUE_I64, {.integer = 95}}), "integer field")) return 1;
     found = deus_value_record_get(&record, "title", 5u);
     if (!require(found && deus_value_data(found, &length) && length == 7u, "record lookup")) return 1;
-    if (!require(tmpfile_s(&json_output) == 0 && json_output != NULL, "JSON output") ||
+    json_output = open_temporary_file();
+    if (!require(json_output != NULL, "JSON output") ||
         !require(deus_value_write_json(&record, json_output), "record JSON serialization")) return 1;
     rewind(json_output); length = fread(json, 1u, sizeof(json) - 1u, json_output); fclose(json_output);
     if (!require(length == 30u && !memcmp(json, "{\"title\":\"Frieren\",\"score\":95}", 30u), "compact record JSON")) return 1;

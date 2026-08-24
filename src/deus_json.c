@@ -206,7 +206,9 @@ static int array_child(const JsonParser *parser, int array, size_t wanted) {
 }
 
 void deus_json_scalar_dispose(DeusJsonScalar *scalar) {
-    if (!scalar) return; free(scalar->string); memset(scalar, 0, sizeof(*scalar));
+    if (!scalar) return;
+    free(scalar->string);
+    memset(scalar, 0, sizeof(*scalar));
 }
 
 int deus_json_extract_scalar(const char *json, size_t json_length,
@@ -225,7 +227,8 @@ int deus_json_extract_scalar(const char *json, size_t json_length,
             while (at < path_length && path[at] != '.' && path[at] != '[') at++;
             if (at == start || parser.tokens[current].kind != JT_OBJECT ||
                 (current = object_child(&parser, current, path + start, at - start)) < 0) {
-                if (error_cap) snprintf(error, error_cap, "JSON object path not found"); return 0;
+                if (error_cap) snprintf(error, error_cap, "JSON object path not found");
+                return 0;
             }
         } else if (path[at] == '[') {
             size_t index = 0u; at++;
@@ -250,7 +253,8 @@ int deus_json_extract_scalar(const char *json, size_t json_length,
     if (length == 4u && !memcmp(value, "true", 4u)) { out->kind = DEUS_JSON_BOOL; out->boolean = 1; return 1; }
     if (length == 5u && !memcmp(value, "false", 5u)) { out->kind = DEUS_JSON_BOOL; return 1; }
     if (memchr(value, '.', length) || memchr(value, 'e', length) || memchr(value, 'E', length) || length >= 64u) {
-        if (error_cap) snprintf(error, error_cap, "JSON number is not an i64"); return 0;
+        if (error_cap) snprintf(error, error_cap, "JSON number is not an i64");
+        return 0;
     }
     char number[64]; memcpy(number, value, length); number[length] = '\0'; errno = 0; char *end = NULL;
     long long integer = strtoll(number, &end, 10);

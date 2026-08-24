@@ -265,7 +265,7 @@ DEUS is an open source project with maintainer-led governance. See
 
 Security reports should follow [SECURITY.md](SECURITY.md) rather than a public
 issue. Release planning and announcements are tracked through GitHub Issues.
-The project maintainer is [reskyume](https://github.com/reskyume), with updates
+The project maintainer is [Rukafuu](https://github.com/Rukafuu), with updates
 at [GitHub](https://github.com/rukafuu) and
 [LinkedIn](https://linkedin.com/in/rukafuu).
 
