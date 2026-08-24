@@ -2,7 +2,7 @@
 
 DEUS is an open source project using maintainer-led governance while the
 project is young. The current maintainer is
-[reskyume](https://github.com/reskyume).
+[Rukafuu](https://github.com/Rukafuu).
 
 Maintainers have final responsibility for architecture, releases, and the
 compatibility and security direction of the project. Larger changes should be
