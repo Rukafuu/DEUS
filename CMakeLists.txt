@@ -5,6 +5,8 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+option(DEUS_BUILD_BENCHMARKS "Build local DEUS regression benchmarks" OFF)
+
 if(MSVC)
   add_compile_options(/W4 /WX /O2 /guard:cf)
   add_link_options(/DYNAMICBASE /NXCOMPAT)
@@ -47,6 +49,14 @@ target_link_libraries(deusvm PRIVATE deuscore)
 
 install(TARGETS deus deusc deusvm deus-language-server RUNTIME DESTINATION bin)
 install(FILES assets/deus-logo.png assets/deus-logo.ico DESTINATION share/deus)
+
+if(DEUS_BUILD_BENCHMARKS)
+  add_executable(deus-bench bench/deus_bench.c)
+  target_link_libraries(deus-bench PRIVATE deuscore deusvmcore)
+  if(WIN32)
+    target_link_libraries(deus-bench PRIVATE psapi)
+  endif()
+endif()
 
 if(WIN32)
   target_sources(deus PRIVATE src/deus.rc)

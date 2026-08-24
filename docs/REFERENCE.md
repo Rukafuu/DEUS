@@ -6,6 +6,7 @@ The reference is split by contract:
 - [bytecode ABI](BYTECODE.md): physical `.deusb` encoding;
 - [design constitution](../DESIGN.md): language, VM and host boundaries;
 - [project manifest](PROJECTS.md): package metadata and capabilities;
+- [benchmarks](BENCHMARKS.md): reproducible performance regression measurements;
 - public C headers in `include/`: VM and host embedding API.
 
 Semantic rules such as immutable locals, exactly one `genesis`, terminal
