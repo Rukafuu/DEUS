@@ -250,6 +250,30 @@ static int attr_match(const char *tag, size_t n, const char *name, const char *v
     return 0;
 }
 
+static int tag_name_match(const char *html, size_t begin, size_t end,
+                          const char *name, size_t name_length) {
+    size_t cursor = begin;
+    while (cursor < end && (html[cursor] == ' ' || html[cursor] == '\t')) cursor++;
+    size_t name_end = cursor;
+    while (name_end < end && isalnum((unsigned char)html[name_end])) name_end++;
+    return name_end - cursor == name_length &&
+           !_strnicmp(html + cursor, name, name_length);
+}
+
+static int reap_append(char **out, size_t *capacity, size_t *used,
+                       const char *text, size_t text_length) {
+    if (!text_length) return 1;
+    if (*used + text_length + 2u > *capacity) {
+        size_t next_capacity = *capacity;
+        while (*used + text_length + 2u > next_capacity) next_capacity *= 2u;
+        char *next = (char *)realloc(*out, next_capacity);
+        if (!next) return 0;
+        *out = next; *capacity = next_capacity;
+    }
+    memcpy(*out + *used, text, text_length); *used += text_length;
+    return 1;
+}
+
 static char *reap(const char *html, size_t len, const char *selector, size_t *out_len) {
     char mode = 0; const char *needle = selector;
     if (*needle == '#' || *needle == '.') mode = *needle++;
@@ -265,13 +289,34 @@ static char *reap(const char *html, size_t len, const char *selector, size_t *ou
                   : mode == '.' ? attr_match(html + i + 1, close - i - 1, "class", needle, 1)
                   : (ne - name == nn && !_strnicmp(html + name, needle, nn));
         if (!match) { i = close + 1; continue; }
-        size_t end = close + 1; while (end < len && html[end] != '<') end++;
-        size_t text = end - (close + 1);
-        if (text) {
-            if (used + text + 2 > cap) { while (used + text + 2 > cap) cap *= 2; char *next = (char *)realloc(out, cap); if (!next) { free(out); return NULL; } out = next; }
-            memcpy(out + used, html + close + 1, text); used += text; out[used++] = '\n';
+        size_t cursor = close + 1, text_begin = cursor, depth = 1;
+        while (cursor < len && depth) {
+            if (html[cursor] != '<') { cursor++; continue; }
+            if (!reap_append(&out, &cap, &used, html + text_begin, cursor - text_begin)) {
+                free(out); return NULL;
+            }
+            size_t tag_close = cursor + 1;
+            while (tag_close < len && html[tag_close] != '>') tag_close++;
+            if (tag_close >= len) { cursor = len; break; }
+            size_t tag_begin = cursor + 1;
+            int closing = tag_begin < tag_close && html[tag_begin] == '/';
+            if (closing) tag_begin++;
+            if (tag_name_match(html, tag_begin, tag_close, html + name, ne - name)) {
+                size_t tail = tag_close;
+                while (tail > tag_begin && (html[tail - 1] == ' ' || html[tail - 1] == '\t')) tail--;
+                if (closing) depth--;
+                else if (tail == tag_begin || html[tail - 1] != '/') depth++;
+            }
+            cursor = tag_close + 1; text_begin = cursor;
         }
-        i = end;
+        if (depth && text_begin < len &&
+            !reap_append(&out, &cap, &used, html + text_begin, len - text_begin)) {
+            free(out); return NULL;
+        }
+        if (used && out[used - 1] != '\n') {
+            if (!reap_append(&out, &cap, &used, "\n", 1u)) { free(out); return NULL; }
+        }
+        i = cursor;
     }
     out[used] = 0; *out_len = used; return out;
 }
@@ -356,6 +401,7 @@ static int value_url_encode(Value *value) {
 int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
                                       const DeusHost *host) {
     DeusProgram p = *input; char error[192];
+    if (!deus_validate_program(input, error, sizeof(error))) return fail(error);
     Runtime rt = {0}; rt.limit = 8; rt.retries = 2; rt.backoff_ms = 100; rt.host = host; InitializeCriticalSection(&rt.rate_lock);
     Value stack[STACK_MAX] = {0}; size_t sp = 0; int began = 0, rc = 0;
     Value locals[DEUS_MAX_LOCALS] = {0}; unsigned char local_bound[DEUS_MAX_LOCALS] = {0};
