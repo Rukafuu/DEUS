@@ -1,0 +1,13 @@
+# EDEN is an application written in DEUS. The host decides which adapters exist.
+flow eden_search:
+    limits:
+        workers 4
+        retry 2
+        rate 10
+
+    bind query = "white mage with a staff"
+    bind description = call "vision.describe" query
+    bind matches = call "catalog.search" description
+    bind first = get? matches "best_match"
+    load first
+    emit

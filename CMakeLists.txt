@@ -100,6 +100,11 @@ if(WIN32)
   add_test(NAME deus_lsp_protocol
     COMMAND powershell -NoProfile -ExecutionPolicy Bypass
       -File ${CMAKE_SOURCE_DIR}/scripts/test-lsp.ps1
+add_executable(deus_host_call_tests tests/test_host_call.c)
+target_link_libraries(deus_host_call_tests PRIVATE deuscore deusvmportable)
+target_compile_definitions(deus_host_call_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+add_test(NAME deus_host_call COMMAND deus_host_call_tests)
+
       -Server $<TARGET_FILE:deus-language-server>)
 endif()
 add_executable(deus_tests tests/test_deus.c)

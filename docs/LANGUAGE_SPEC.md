@@ -25,7 +25,7 @@ source (.deus)
     → structural parsing (Source AST with layout events)
     → semantic validation (type checking, capability checks)
     → lowering (Core AST / instructions)
-    → bytecode generation (.deusb, ABI v1)
+    → bytecode generation (.deusb, ABI v2)
     → bounded VM execution
     → authorized host effects
 ```
@@ -179,6 +179,28 @@ Expression types:
 - At: `bind item = at list index` (errors if out of bounds)
 - At?: `bind item = at? list index` (returns `Null` if out of bounds)
 - Pure expressions: `bind result = a + b * 2`
+
+### 5.2.1 Host Adapter Calls
+
+```deus
+bind output = call "adapter.operation" input
+```
+
+`call` is the generic capability-gated bridge to the embedding host. It does
+not grant network, model, database, or filesystem access by itself: the host
+must expose `DEUS_HOST_CAP_ADAPTER_CALL` and implement the `DeusHost.call`
+callback. Adapter names begin with a lowercase letter and may contain lowercase
+letters, digits, `.` and `-`.
+
+The input and output must be serializable DEUS values (`null`, booleans, i64,
+UTF-8 strings, lists, and records). `Document`, `Future`, bytes, and errors are
+not accepted across this boundary. The VM provides the callback a value context;
+the callback must construct its output in that context. Outputs remain owned by
+the VM after the callback returns.
+
+For example, EDEN can use `call "vision.describe" query` and then
+`call "catalog.search" description`. Those names are application conventions,
+not language keywords.
 
 ### 5.3 Load Statement
 
