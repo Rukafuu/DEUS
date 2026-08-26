@@ -1,9 +1,41 @@
-/target/
-/build/
-/build-*/
-/dist/
-/deus_project_test_tmp/
-*.deusb
+```
+# Compiled and binary files
+*.o
+*.obj
+*.out
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# System files
 .DS_Store
-editors/vscode/
-website/
+Thumbs.db
+```
