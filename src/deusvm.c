@@ -372,6 +372,7 @@ static int value_from_managed(const DeusValue *source, Value *out) {
     return 0;
 }
 
+static int runtime_call_adapter(const Runtime *runtime,const char *name,size_t length,const Value *input,DeusValueContext *context,Value *output,char *error,size_t cap){DeusValue value=deus_value_null(),result=deus_value_null();int ok;if(!runtime->host||runtime->host->abi_version!=DEUS_HOST_ABI_VERSION||!(runtime->host->capabilities&DEUS_HOST_CAP_ADAPTER_CALL)||!runtime->host->call){snprintf(error,cap,"runtime requires DeusHost adapter capability");return 0;}if(!value_as_managed(input,context,&value)){snprintf(error,cap,"adapter input is not serializable");return 0;}ok=runtime->host->call(runtime->host->context,name,length,&value,context,&result,error,cap);deus_value_dispose(&value);if(!ok){if(cap&&!error[0])snprintf(error,cap,"host adapter call failed");deus_value_dispose(&result);return 0;}if(!value_from_managed(&result,output)){snprintf(error,cap,"host adapter returned a non-serializable value");deus_value_dispose(&result);return 0;}deus_value_dispose(&result);return 1;}
 static int url_unreserved(unsigned char byte) {
     return (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
            (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' || byte == '_' || byte == '~';
@@ -565,6 +566,7 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             if (!body) { rc = fail(error); break; }
             stack[sp++] = (Value){V_DOCUMENT, body, length, NULL, 0};
         } else if (in.opcode == DEUS_BIND) {
+        } else if (in.opcode == DEUS_HOST_CALL) {
             if (!began || !sp || in.operand >= DEUS_MAX_LOCALS || local_bound[in.operand]) { rc = fail("invalid VM state at BIND"); break; }
             locals[in.operand] = stack[--sp]; memset(&stack[sp], 0, sizeof(stack[sp])); local_bound[in.operand] = 1u;
         } else if (in.opcode == DEUS_LOAD) {

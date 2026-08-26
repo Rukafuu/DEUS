@@ -43,6 +43,18 @@ static int template_error(DeusDiagnostic *diagnostic, const DeusAstInstruction *
     semantic_error(diagnostic, instruction, message); return 0;
 }
 
+static int adapter_name_valid(const char *name, uint32_t length) {
+    uint32_t index;
+    if (!length || name[0] < 'a' || name[0] > 'z') return 0;
+    for (index = 1u; index < length; index++) {
+        char character = name[index];
+        if (!((character >= 'a' && character <= 'z') ||
+              (character >= '0' && character <= '9') ||
+              character == '.' || character == '-')) return 0;
+    }
+    return 1;
+}
+
 static int compile_hunt_template(const DeusAstInstruction *instruction,
                                  const LocalSymbol *locals, uint32_t local_count,
                                  DeusProgram *out, DeusDiagnostic *diagnostic) {
@@ -223,6 +235,20 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                 if (template_result < 0 &&
                     (!intern_string(out, instruction->operand.string, instruction->string_length, &operand) ||
                      !add_code(out, DEUS_HUNT, operand))) goto memory_failed;
+            } else if (instruction->expression_kind == DEUS_AST_EXPRESSION_CALL) {
+                uint32_t source_slot = 0u;
+                for (; source_slot < local_count; source_slot++)
+                    if (locals[source_slot].length == instruction->expression_symbol_length &&
+                        !memcmp(locals[source_slot].name, instruction->expression_symbol,
+                                instruction->expression_symbol_length)) break;
+                if (source_slot == local_count) { semantic_error(diagnostic, instruction, "unknown adapter input local"); goto failed; }
+                if (locals[source_slot].type == LOCAL_DOCUMENT) { semantic_error(diagnostic, instruction, "call input must be a serializable value, not Document"); goto failed; }
+                if (!adapter_name_valid(instruction->operand.string, instruction->string_length) ) {
+                    semantic_error(diagnostic, instruction, "adapter name must use lowercase letters, digits, '.' or '-'"); goto failed;
+                }
+                value_type = LOCAL_VALUE; executor_locked = 1;
+                if (!intern_string(out, instruction->operand.string, instruction->string_length, &operand) ||
+                    !add_code(out, DEUS_LOAD, source_slot) || !add_code(out, DEUS_HOST_CALL, operand)) goto memory_failed;
             } else if (instruction->expression_kind == DEUS_AST_EXPRESSION_REAP) {
                 uint32_t source_slot = 0u;
                 for (; source_slot < local_count; source_slot++)

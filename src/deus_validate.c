@@ -33,6 +33,19 @@ static int require_top(const uint16_t *stack, uint32_t depth, uint16_t allowed,
            invalid(error, cap, pc, "%s", message);
 }
 
+static int adapter_name_valid(const DeusProgram *program, uint32_t operand) {
+    const DeusString *name; uint32_t index;
+    if (operand >= program->string_count) return 0;
+    name = &program->strings[operand];
+    if (!name->len || name->data[0] < 'a' || name->data[0] > 'z') return 0;
+    for (index = 1u; index < name->len; index++) {
+        char character = name->data[index];
+        if (!((character >= 'a' && character <= 'z') ||
+              (character >= '0' && character <= '9') || character == '.' || character == '-')) return 0;
+    }
+    return 1;
+}
+
 int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
     uint16_t stack[VERIFY_STACK_MAX] = {0}, locals[DEUS_MAX_LOCALS] = {0};
     unsigned char bound[DEUS_MAX_LOCALS] = {0};
@@ -197,6 +210,13 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
             if (!began || !require_top(stack, depth, TYPE_STRING | TYPE_TEXT,
                                        error, cap, pc, "HUNT_VALUE requires a URL string")) return 0;
             executor_locked = 1; stack[depth - 1u] = TYPE_DOCUMENT;
+            break;
+        case DEUS_HOST_CALL:
+            if (!began || !adapter_name_valid(program, in.operand))
+                return invalid(error, cap, pc, "HOST_CALL requires a valid adapter name");
+            if (!require_top(stack, depth, TYPE_VALUE, error, cap, pc,
+                             "HOST_CALL requires a serializable input value")) return 0;
+            executor_locked = 1; stack[depth - 1u] = TYPE_VALUE;
             break;
         case DEUS_EMIT:
             if (!require_top(stack, depth, TYPE_VALUE, error, cap, pc,

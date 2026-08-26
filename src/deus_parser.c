@@ -24,6 +24,7 @@ static int pure_expression_start(const DeusToken *token) {
     return token->kind == DEUS_TOKEN_STRING || token->kind == DEUS_TOKEN_NUMBER ||
            token->kind == DEUS_TOKEN_LPAREN ||
            (token->kind == DEUS_TOKEN_IDENTIFIER &&
+            !same_word(token, "call") &&
             !same_word(token, "hunt") && !same_word(token, "reap") && !same_word(token, "json") &&
             !same_word(token, "get") && !same_word(token, "get?") && !same_word(token, "at") &&
             !same_word(token, "at?") && !same_word(token, "record") && !same_word(token, "list"));
@@ -354,6 +355,35 @@ int deus_parse_ast_fragment(const char *source, size_t length,
                     instruction.operand_kind = DEUS_AST_OPERAND_STRING;
                     instruction.operand.string = url.owned; instruction.string_length = (uint32_t)url.length;
                     url.owned = NULL; deus_token_dispose(&url);
+                } else if (operand.kind == DEUS_TOKEN_IDENTIFIER && same_word(&operand, "call")) {
+                    DeusToken adapter = {0}, input = {0};
+                    if (!deus_lexer_next(&lexer, &adapter, diagnostic) ||
+                        adapter.kind != DEUS_TOKEN_STRING || adapter.length > UINT32_MAX ||
+                        !deus_lexer_next(&lexer, &input, diagnostic) ||
+                        input.kind != DEUS_TOKEN_IDENTIFIER || input.length > UINT32_MAX) {
+                        diagnostic->line = input.line ? input.line : adapter.line;
+                        diagnostic->column = input.column ? input.column : adapter.column;
+                        snprintf(diagnostic->message, sizeof(diagnostic->message),
+                                 "call expression requires a quoted adapter and input local");
+                        deus_token_dispose(&input); deus_token_dispose(&adapter);
+                        deus_token_dispose(&operand); free(instruction.symbol); goto failed;
+                    }
+                    instruction.expression_symbol = (char *)malloc(input.length + 1u);
+                    if (!instruction.expression_symbol) {
+                        diagnostic->line = input.line; diagnostic->column = input.column;
+                        snprintf(diagnostic->message, sizeof(diagnostic->message), "out of memory");
+                        deus_token_dispose(&input); deus_token_dispose(&adapter);
+                        deus_token_dispose(&operand); free(instruction.symbol); goto failed;
+                    }
+                    memcpy(instruction.expression_symbol, input.start, input.length);
+                    instruction.expression_symbol[input.length] = '\0';
+                    instruction.expression_symbol_length = (uint32_t)input.length;
+                    instruction.expression_kind = DEUS_AST_EXPRESSION_CALL;
+                    instruction.operand_kind = DEUS_AST_OPERAND_STRING;
+                    instruction.operand.string = adapter.owned;
+                    instruction.string_length = (uint32_t)adapter.length;
+                    adapter.owned = NULL;
+                    deus_token_dispose(&input); deus_token_dispose(&adapter);
                 } else if (operand.kind == DEUS_TOKEN_IDENTIFIER &&
                            (same_word(&operand, "reap") || same_word(&operand, "json"))) {
                     int is_json = same_word(&operand, "json");
