@@ -198,6 +198,11 @@ not accepted across this boundary. The VM provides the callback a value context;
 the callback must construct its output in that context. Outputs remain owned by
 the VM after the callback returns.
 
+Dynamic structured reads can refine an adapter result: `get` and `at` work when
+the runtime value is respectively a record or list. The optional forms, `get?`
+and `at?`, return `null` for an absent key/index or an incompatible runtime kind;
+their mandatory counterparts fail.
+
 For example, EDEN can use `call "vision.describe" query` and then
 `call "catalog.search" description`. Those names are application conventions,
 not language keywords.

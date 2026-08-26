@@ -155,12 +155,12 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
             break;
         case DEUS_RECORD_GET:
         case DEUS_RECORD_GET_OPTIONAL:
-            if (!require_top(stack, depth, TYPE_RECORD, error, cap, pc, "record read requires a record")) return 0;
+            if (!require_top(stack, depth, TYPE_RECORD | TYPE_VALUE, error, cap, pc, "record read requires a record")) return 0;
             stack[depth - 1u] = TYPE_VALUE;
             break;
         case DEUS_LIST_AT:
         case DEUS_LIST_AT_OPTIONAL:
-            if (!require_top(stack, depth, TYPE_LIST, error, cap, pc, "list read requires a list")) return 0;
+            if (!require_top(stack, depth, TYPE_LIST | TYPE_VALUE, error, cap, pc, "list read requires a list")) return 0;
             stack[depth - 1u] = TYPE_VALUE;
             break;
         case DEUS_BOOL_NOT:

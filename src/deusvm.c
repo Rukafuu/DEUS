@@ -474,12 +474,20 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             const DeusValue *found; Value extracted;
             int is_get = in.opcode == DEUS_RECORD_GET || in.opcode == DEUS_RECORD_GET_OPTIONAL;
             int is_optional = in.opcode == DEUS_RECORD_GET_OPTIONAL || in.opcode == DEUS_LIST_AT_OPTIONAL;
-            if (!sp || stack[sp - 1u].kind != V_MANAGED) { rc = fail("structured read requires a managed value"); break; }
+            if (!sp || stack[sp - 1u].kind != V_MANAGED ||
+                (is_get && stack[sp - 1u].managed.kind != DEUS_VALUE_RECORD) ||
+                (!is_get && stack[sp - 1u].managed.kind != DEUS_VALUE_LIST)) {
+                if (is_optional && sp) {
+                    value_dispose(&stack[sp - 1u]);
+                    stack[sp - 1u] = (Value){V_NULL, NULL, 0u, NULL, 0};
+                    continue;
+                }
+                rc = fail(is_get ? "RECORD_GET requires a record" : "LIST_AT requires a list");
+                break;
+            }
             if (is_get) {
-                if (stack[sp - 1u].managed.kind != DEUS_VALUE_RECORD) { rc = fail("RECORD_GET requires a record"); break; }
                 found = deus_value_record_get(&stack[sp - 1u].managed, arg, arg_length);
             } else {
-                if (stack[sp - 1u].managed.kind != DEUS_VALUE_LIST) { rc = fail("LIST_AT requires a list"); break; }
                 found = deus_value_list_at(&stack[sp - 1u].managed, in.operand);
             }
             if (!found && !is_optional) { rc = fail(is_get ? "record field was not found" : "list index is out of bounds"); break; }
