@@ -48,6 +48,7 @@ bind_expression        = structured_literal
                        | hunt_expression
                        | reap_expression
                        | json_expression
+                       | call_expression
                        | get_expression
                        | at_expression
                        | pure_expression ;
@@ -57,6 +58,7 @@ hunt_expression        = "hunt" , string ;
 reap_expression        = "reap" , local_name , string ;
 json_expression        = "json" , local_name , string ;
 get_expression         = ( "get" | "get?" ) , local_name , string ;
+call_expression        = "call" , string , local_name ;
 at_expression          = ( "at" | "at?" ) , local_name , unsigned_integer ;
 
 structured_literal     = record_literal | list_literal ;

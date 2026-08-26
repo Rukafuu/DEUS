@@ -165,6 +165,7 @@ static const char *hover_text(const char *word) {
         {"flow", "Declares a named DEUS retrieval flow."}, {"bind", "Binds a typed value to a local name."},
         {"hunt", "Retrieves a document through an authorized host capability."}, {"reap", "Extracts data from a resolved document."},
         {"parallel", "Runs bounded retrieval operations concurrently."}, {"emit", "Emits the value currently on the stack."},
+        {"call", "Invokes a named adapter exposed by an authorized host capability."},
         {"omni", "Declares a host module requirement; it does not grant authority."}, {"limit", "Sets the maximum concurrent retrieval count."}
     };
     for (size_t i = 0u; i < sizeof(entries) / sizeof(entries[0]); i++) if (!strcmp(word, entries[i].word)) return entries[i].text;
