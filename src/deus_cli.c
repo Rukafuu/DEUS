@@ -126,7 +126,8 @@ static int command_init(const char *directory, const char *template_name) {
 static char *load_source(const char *path, size_t *length) {
     FILE *file = fopen(path, "rb"); long size; char *source;
     if (!file || fseek(file, 0, SEEK_END) || (size = ftell(file)) < 0) {
-        if (file) fclose(file); return NULL;
+        if (file) fclose(file);
+        return NULL;
     }
     rewind(file); source = (char *)malloc((size_t)size + 1u);
     if (!source || (size && fread(source, 1u, (size_t)size, file) != (size_t)size)) {
