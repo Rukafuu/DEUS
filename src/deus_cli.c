@@ -91,7 +91,8 @@ static int valid_package_name(const char *name) {
 static int command_init(const char *directory, const char *template_name) {
     const char *name = strrchr(directory, '\\'); char src[1024], manifest[1024], main_path[1024], ignore[1024];
     const char *program = "genesis\nbind message = \"Hello from DEUS\"\nload message\nemit\nhalt\n";
-    if (!name) name = strrchr(directory, '/'); name = name ? name + 1 : directory;
+    if (!name) name = strrchr(directory, '/');
+    name = name ? name + 1 : directory;
     if (!valid_package_name(name)) { fprintf(stderr, "deus: project directory must end in a package name\n"); return 64; }
     if (strcmp(template_name, "minimal") && strcmp(template_name, "crawler") && strcmp(template_name, "ranking")) {
         fprintf(stderr, "deus: unknown template '%s'\n", template_name); return 64;

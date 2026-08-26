@@ -101,18 +101,24 @@ int deus_lexer_next(DeusLexer *lexer, DeusToken *token, DeusDiagnostic *diagnost
         }
     }
     if (*lexer->cursor == '=' || *lexer->cursor == '<' || *lexer->cursor == '>' ||
-        *lexer->cursor == '(' || *lexer->cursor == ')') {
+        *lexer->cursor == '(' || *lexer->cursor == ')' || *lexer->cursor == '+' ||
+        *lexer->cursor == '-' || *lexer->cursor == '*' || *lexer->cursor == '/') {
         char punctuation = *lexer->cursor; advance(lexer); token->start = start; token->length = 1u;
         token->kind = punctuation == '=' ? DEUS_TOKEN_EQUAL : punctuation == '<' ? DEUS_TOKEN_LESS :
-            punctuation == '>' ? DEUS_TOKEN_GREATER : punctuation == '(' ? DEUS_TOKEN_LPAREN : DEUS_TOKEN_RPAREN;
+            punctuation == '>' ? DEUS_TOKEN_GREATER : punctuation == '(' ? DEUS_TOKEN_LPAREN :
+            punctuation == ')' ? DEUS_TOKEN_RPAREN : punctuation == '+' ? DEUS_TOKEN_PLUS :
+            punctuation == '-' ? DEUS_TOKEN_MINUS : punctuation == '*' ? DEUS_TOKEN_STAR :
+            DEUS_TOKEN_SLASH;
         return 1;
     }
     if (*lexer->cursor == '{' || *lexer->cursor == '}' || *lexer->cursor == '[' ||
-        *lexer->cursor == ']' || *lexer->cursor == ':' || *lexer->cursor == ',') {
+        *lexer->cursor == ']' || *lexer->cursor == ':' || *lexer->cursor == ',' ||
+        *lexer->cursor == '%' || *lexer->cursor == '.') {
         char punctuation = *lexer->cursor; advance(lexer); token->start = start; token->length = 1u;
         token->kind = punctuation == '{' ? DEUS_TOKEN_LBRACE : punctuation == '}' ? DEUS_TOKEN_RBRACE :
             punctuation == '[' ? DEUS_TOKEN_LBRACKET : punctuation == ']' ? DEUS_TOKEN_RBRACKET :
-            punctuation == ':' ? DEUS_TOKEN_COLON : DEUS_TOKEN_COMMA;
+            punctuation == ':' ? DEUS_TOKEN_COLON : punctuation == ',' ? DEUS_TOKEN_COMMA :
+            punctuation == '%' ? DEUS_TOKEN_PERCENT : DEUS_TOKEN_DOT;
         return 1;
     }
     if (isalpha((unsigned char)*lexer->cursor) || *lexer->cursor == '_') {
@@ -122,10 +128,8 @@ int deus_lexer_next(DeusLexer *lexer, DeusToken *token, DeusDiagnostic *diagnost
         token->kind = DEUS_TOKEN_IDENTIFIER; token->start = start;
         token->length = (size_t)(lexer->cursor - start); return 1;
     }
-    if (isdigit((unsigned char)*lexer->cursor) ||
-        (*lexer->cursor == '-' && lexer->cursor + 1 < lexer->end && isdigit((unsigned char)lexer->cursor[1]))) {
-        uint64_t value = 0u, limit = (uint64_t)INT64_MAX; int negative = 0;
-        if (*lexer->cursor == '-') { negative = 1; limit += 1u; advance(lexer); }
+    if (isdigit((unsigned char)*lexer->cursor)) {
+        uint64_t value = 0u, limit = (uint64_t)INT64_MAX;
         do {
             uint64_t digit = (uint64_t)(*lexer->cursor - '0');
             if (value > (limit - digit) / 10u) { emit_diagnostic(diagnostic, lexer, "integer exceeds i64"); return 0; }
@@ -134,8 +138,8 @@ int deus_lexer_next(DeusLexer *lexer, DeusToken *token, DeusDiagnostic *diagnost
         } while (lexer->cursor < lexer->end && isdigit((unsigned char)*lexer->cursor));
         token->kind = DEUS_TOKEN_NUMBER; token->start = start;
         token->length = (size_t)(lexer->cursor - start);
-        token->integer = negative ? (value == (uint64_t)INT64_MAX + 1u ? INT64_MIN : -(int64_t)value) : (int64_t)value;
-        token->number = value <= UINT32_MAX && !negative ? (uint32_t)value : 0u; return 1;
+        token->integer = (int64_t)value;
+        token->number = value <= UINT32_MAX ? (uint32_t)value : 0u; return 1;
     }
     if (*lexer->cursor == '"') return lex_string(lexer, token, diagnostic);
     emit_diagnostic(diagnostic, lexer, "unexpected character"); return 0;

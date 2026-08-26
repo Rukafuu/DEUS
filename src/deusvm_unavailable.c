@@ -47,5 +47,7 @@ else if(in.opcode==DEUS_URL_JOIN){Value *l=&st[sp-2u],*r=&st[sp-1u];size_t n=l->
 else if(in.opcode==DEUS_HUNT_VALUE){Value u=st[--sp],d;if(!hunt(&rt,u.data,u.len,&d,err,sizeof(err))){drop(&u);rc=fail(err);break;}drop(&u);st[sp++]=d;}
 else if(in.opcode==DEUS_EMIT){Value v=st[--sp];if(v.kind==V_TEXT||v.kind==V_STRING)fwrite(v.data,1,v.len,out);else if(v.kind==V_NULL)fputs("null",out);else if(v.kind==V_BOOL)fputs(v.scalar?"true":"false",out);else if(v.kind==V_I64)fprintf(out,"%lld",(long long)v.scalar);else if(v.kind==V_MANAGED&&!deus_value_write_json(&v.managed,out)){drop(&v);rc=fail("EMIT failed to serialize compound value");break;}drop(&v);}
 else if(in.opcode==DEUS_HALT)break;}
-while(sp)drop(&st[--sp]);for(pc=0;pc<DEUS_MAX_LOCALS;pc++)if(bound[pc])drop(&loc[pc]);deus_value_context_destroy(ctx);return rc;}
+while(sp)drop(&st[--sp]);
+for(pc=0;pc<DEUS_MAX_LOCALS;pc++)if(bound[pc])drop(&loc[pc]);
+deus_value_context_destroy(ctx);return rc;}
 int deus_vm_execute_program(const DeusProgram *p,FILE *out){return deus_vm_execute_program_with_host(p,out,NULL);}
