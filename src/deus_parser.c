@@ -313,7 +313,7 @@ int deus_parse_ast_fragment(const char *source, size_t length,
                     deus_token_dispose(&first);
                 }
                 if (!instruction.expression) {
-                if (!deus_lexer_next(&lexer, &operand, diagnostic)) { free(instruction.symbol); goto failed; }
+                    if (!deus_lexer_next(&lexer, &operand, diagnostic)) { free(instruction.symbol); goto failed; }
                 if (operand.kind == DEUS_TOKEN_LBRACE || operand.kind == DEUS_TOKEN_LBRACKET) {
                     int is_record = operand.kind == DEUS_TOKEN_LBRACE;
                     deus_token_dispose(&operand);
