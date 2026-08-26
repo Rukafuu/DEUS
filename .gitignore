@@ -6,4 +6,4 @@
 *.deusb
 .DS_Store
 editors/vscode/
-website/
+website/target/
