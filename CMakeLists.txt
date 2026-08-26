@@ -30,6 +30,8 @@ add_library(deuscore STATIC
   src/deus_source_parser.c
   src/deus_source_lower.c
   src/deus_source.c
+  src/deus_host.c
+  src/deus_execution.c
   src/deus_value.c)
 target_include_directories(deuscore PUBLIC include)
 target_include_directories(deuscore PRIVATE src)
@@ -149,7 +151,23 @@ target_include_directories(deus_limits_compatibility_tests PRIVATE src)
 target_link_libraries(deus_limits_compatibility_tests PRIVATE deuscore)
 add_test(NAME deus_limits_compatibility COMMAND deus_limits_compatibility_tests)
 
+add_executable(deus_host_abi_tests tests/test_host_abi.c)
+target_link_libraries(deus_host_abi_tests PRIVATE deuscore)
+add_test(NAME deus_host_abi COMMAND deus_host_abi_tests)
+
+add_executable(deus_output_sink_tests tests/test_output_sink.c)
+target_link_libraries(deus_output_sink_tests PRIVATE deuscore deusvmportable)
+add_test(NAME deus_output_sink COMMAND deus_output_sink_tests)
+
+add_executable(deus_execution_controls_tests tests/test_execution_controls.c)
+target_link_libraries(deus_execution_controls_tests PRIVATE deuscore deusvmportable)
+add_test(NAME deus_execution_controls COMMAND deus_execution_controls_tests)
+
 if(WIN32)
+  add_executable(deus_execution_controls_native_tests tests/test_execution_controls.c)
+  target_link_libraries(deus_execution_controls_native_tests PRIVATE deuscore deusvmcore)
+  add_test(NAME deus_execution_controls_native COMMAND deus_execution_controls_native_tests)
+
   add_executable(deus_async_tests tests/test_async.c)
   target_link_libraries(deus_async_tests PRIVATE deuscore deusvmcore ws2_32)
   add_test(NAME deus_async_local COMMAND deus_async_tests)

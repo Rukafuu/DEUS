@@ -6,6 +6,9 @@
 #include <stdio.h>
 
 #define DEUS_HOST_ABI_VERSION 1u
+#define DEUS_OUTPUT_ABI_VERSION 1u
+#define DEUS_EXECUTION_ABI_VERSION 1u
+#define DEUS_DEFAULT_INSTRUCTION_LIMIT UINT64_C(1000000)
 #define DEUS_ABI_VERSION 1u
 #define DEUS_HEADER_SIZE 40u
 #define DEUS_MAX_SECTION (64u * 1024u * 1024u)
@@ -60,7 +63,29 @@ typedef struct {
     void (*release_document)(void *context, DeusHostDocument *document);
 } DeusHost;
 
+typedef int (*DeusOutputWrite)(void *context, const void *data, size_t length);
 
+typedef struct {
+    uint32_t abi_version;
+    void *context;
+    DeusOutputWrite write;
+} DeusOutputSink;
+
+typedef uint64_t (*DeusExecutionNowMs)(void *context);
+typedef int (*DeusExecutionShouldCancel)(void *context);
+
+typedef struct {
+    uint32_t abi_version;
+    uint64_t instruction_limit;
+    uint64_t deadline_ms;
+    void *context;
+    DeusExecutionNowMs now_ms;
+    DeusExecutionShouldCancel should_cancel;
+} DeusExecutionOptions;
+
+int deus_host_validate(const DeusHost *host, uint64_t required_capabilities,
+                       char *error, size_t error_cap);
+DeusExecutionOptions deus_execution_options_default(void);
 void deus_program_free(DeusProgram *program);
 int deus_parse_source(const char *source, size_t length, DeusProgram *out,
                       DeusDiagnostic *diagnostic);
@@ -71,7 +96,14 @@ int deus_read_binary(const char *path, DeusProgram *out,
 int deus_vm_execute_program(const DeusProgram *program, FILE *output);
 int deus_validate_program(const DeusProgram *program,
                           char *error, size_t error_cap);
-
-#endif
 int deus_vm_execute_program_with_host(const DeusProgram *program, FILE *output,
                                       const DeusHost *host);
+int deus_vm_execute_program_with_sink(const DeusProgram *program,
+                                      const DeusOutputSink *output,
+                                      const DeusHost *host);
+int deus_vm_execute_program_with_options(const DeusProgram *program,
+                                         const DeusOutputSink *output,
+                                         const DeusHost *host,
+                                         const DeusExecutionOptions *options);
+
+#endif
