@@ -134,6 +134,8 @@ static int test_operational_expressions(void) {
     const char *source = "omni \"net.http2\"\ngenesis\nbind page = hunt \"deus://catalog/test\"\nbind title = reap page \"h1\"\nload title\nemit\nhalt\n";
     const char *invalid = "genesis\nbind value = 42\nbind title = reap value \"h1\"\nhalt\n";
     const char *late_config = "genesis\nhunt \"https://example.test\"\nlimit 2\nreap \"h1\"\nemit\nhalt\n";
+    const char *document_emit = "genesis\nbind page = hunt \"https://example.test\"\nload page\nemit\nhalt\n";
+    const char *document_debug = "genesis\nbind page = hunt \"https://example.test\"\nload page\ndebug\nhalt\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0};
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "operational expression compilation")) return 0;
     int ok = program.code_count == 10u && program.code[2].opcode == DEUS_HUNT &&
@@ -143,13 +145,18 @@ static int test_operational_expressions(void) {
     if (!require(ok, "operational expression lowering")) return 0;
     if (!require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
                  strstr(diagnostic.message, "Document") != NULL, "reap type rejection")) return 0;
-    return require(!deus_parse_source(late_config, strlen(late_config), &program, &diagnostic) &&
-                   strstr(diagnostic.message, "network execution") != NULL, "late executor configuration rejection");
+    if (!require(!deus_parse_source(late_config, strlen(late_config), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "network execution") != NULL, "late executor configuration rejection")) return 0;
+    if (!require(!deus_parse_source(document_emit, strlen(document_emit), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "serializable") != NULL, "Document emit type rejection")) return 0;
+    return require(!deus_parse_source(document_debug, strlen(document_debug), &program, &diagnostic) &&
+                   strstr(diagnostic.message, "serializable") != NULL, "Document debug type rejection");
 }
-
 static int test_typed_expressions(void) {
     const char *source = "genesis\nbind score = 95\nbind minimum = 80\nbind verified = true\nbind eligible = verified and score >= minimum\nbind label = null ?? \"fallback\"\nbind score_text = text(score)\nbind parsed = i64(\"42\")\nbind truth = bool(1)\nhalt\n";
     const char *invalid = "genesis\nbind bad = 1 and true\nhalt\n";
+    const char *dynamic_invalid = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind bad = result > 1\nhalt\n";
+    const char *dynamic_converted = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind score = i64(result)\nbind accepted = score > 1\nhalt\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0}; int comparisons = 0, boolean = 0, fallback = 0, conversions = 0;
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "typed expression compilation")) return 0;
     for (uint32_t index = 0; index < program.code_count; index++) {
@@ -162,10 +169,14 @@ static int test_typed_expressions(void) {
     deus_program_free(&program);
     if (!require(comparisons == 1 && boolean == 1 && fallback == 1 && conversions == 3,
                  "typed expression lowering")) return 0;
-    return require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
-                   strstr(diagnostic.message, "Bool") != NULL, "boolean type rejection");
+    if (!require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "Bool") != NULL, "boolean type rejection")) return 0;
+    if (!require(!deus_parse_source(dynamic_invalid, strlen(dynamic_invalid), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "I64") != NULL, "dynamic ordering requires conversion")) return 0;
+    if (!require(deus_parse_source(dynamic_converted, strlen(dynamic_converted), &program, &diagnostic),
+                 "converted dynamic ordering compilation")) return 0;
+    deus_program_free(&program); return 1;
 }
-
 static int test_url_templates(void) {
     const char *source = "genesis\nbind query = \"frieren white\"\nbind year = 2023\nbind page = hunt \"https://example.test/search?q={query}&year={year}\"\nhalt\n";
     const char *unknown = "genesis\nbind page = hunt \"https://example.test/{missing}\"\nhalt\n";

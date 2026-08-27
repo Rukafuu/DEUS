@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Static typing
+
+- Boolean and ordering operators now require statically known Bool and I64 values. Convert adapter or JSON values explicitly before using them in logic.
+- `emit` and `debug` reject known `Document` values during compilation.
+
 ### Diagnostics
 
 - `debug` writes a serializable top-of-stack value to stderr, leaving stdout reserved for `emit` output.

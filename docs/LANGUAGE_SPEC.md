@@ -199,6 +199,12 @@ not accepted across this boundary. The VM provides the callback a value context;
 the callback must construct its output in that context. Outputs remain owned by
 the VM after the callback returns.
 
+### 5.2.2 Dynamic Values and Conversion
+
+Adapter calls and untyped JSON extraction produce dynamic values. A dynamic value
+must be explicitly converted with `bool(...)`, `i64(...)`, or `text(...)` before
+it can be used in a Boolean or ordering expression. This keeps runtime adapter
+contracts at the boundary instead of letting uncertain types flow through logic.
 Dynamic structured reads can refine an adapter result: `get` and `at` work when
 the runtime value is respectively a record or list. The optional forms, `get?`
 and `at?`, return `null` for an absent key/index or an incompatible runtime kind;

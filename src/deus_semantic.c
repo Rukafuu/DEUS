@@ -8,6 +8,10 @@ typedef enum { LOCAL_NULL, LOCAL_BOOL, LOCAL_I64, LOCAL_STRING, LOCAL_DOCUMENT,
                LOCAL_SCALAR, LOCAL_RECORD, LOCAL_LIST, LOCAL_VALUE } LocalType;
 typedef struct { const char *name; uint32_t length; LocalType type; } LocalSymbol;
 
+static int type_is_serializable(LocalType type) {
+    return type != LOCAL_DOCUMENT;
+}
+
 static void semantic_error(DeusDiagnostic *diagnostic, const DeusAstInstruction *instruction,
                            const char *message) {
     diagnostic->line = instruction->line; diagnostic->column = instruction->column;
@@ -138,7 +142,7 @@ static int compile_expression(const DeusExpressionNode *expression, const LocalS
     }
     if (!compile_expression(expression->left, locals, local_count, out, &left_type, diagnostic)) return 0;
     if (expression->kind == DEUS_EXPRESSION_UNARY) {
-        if (left_type != LOCAL_BOOL && left_type != LOCAL_SCALAR && left_type != LOCAL_VALUE) {
+        if (left_type != LOCAL_BOOL) {
             snprintf(diagnostic->message, sizeof(diagnostic->message), "not requires Bool"); return 0;
         }
         *type = LOCAL_BOOL; return add_code(out, DEUS_BOOL_NOT, 0u);
@@ -166,8 +170,8 @@ static int compile_expression(const DeusExpressionNode *expression, const LocalS
         default: return 0;
     }
     if (opcode == DEUS_BOOL_AND || opcode == DEUS_BOOL_OR) {
-        if ((left_type != LOCAL_BOOL && left_type != LOCAL_SCALAR && left_type != LOCAL_VALUE) ||
-            (right_type != LOCAL_BOOL && right_type != LOCAL_SCALAR && right_type != LOCAL_VALUE)) {
+        if ((left_type != LOCAL_BOOL) ||
+            (right_type != LOCAL_BOOL)) {
             snprintf(diagnostic->message, sizeof(diagnostic->message), "boolean operator requires Bool operands"); return 0;
         }
         *type = LOCAL_BOOL;
@@ -175,8 +179,8 @@ static int compile_expression(const DeusExpressionNode *expression, const LocalS
         *type = left_type == LOCAL_NULL ? right_type : left_type == right_type ? left_type : LOCAL_VALUE;
     } else {
         int ordering = opcode >= DEUS_LESS && opcode <= DEUS_GREATER_EQUAL;
-        if (ordering && ((left_type != LOCAL_I64 && left_type != LOCAL_SCALAR && left_type != LOCAL_VALUE) ||
-                         (right_type != LOCAL_I64 && right_type != LOCAL_SCALAR && right_type != LOCAL_VALUE))) {
+        if (ordering && ((left_type != LOCAL_I64) ||
+                         (right_type != LOCAL_I64))) {
             snprintf(diagnostic->message, sizeof(diagnostic->message), "ordering comparison requires I64 operands"); return 0;
         }
         *type = LOCAL_BOOL;
@@ -188,7 +192,7 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                               DeusDiagnostic *diagnostic) {
     LocalSymbol locals[DEUS_MAX_LOCALS] = {{0}}; uint32_t local_count = 0u;
     int genesis = 0, began = 0, halted = 0, executor_locked = 0;
-    uint32_t depth = 0u, futures = 0u;
+    uint32_t depth = 0u, futures = 0u; LocalType stack_types[DEUS_MAX_LOCALS] = {0};
     const DeusAstInstruction *current_instruction = NULL;
     memset(out, 0, sizeof(*out));
     for (uint32_t index = 0; index < ast->count; index++) {
@@ -242,7 +246,7 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                         !memcmp(locals[source_slot].name, instruction->expression_symbol,
                                 instruction->expression_symbol_length)) break;
                 if (source_slot == local_count) { semantic_error(diagnostic, instruction, "unknown adapter input local"); goto failed; }
-                if (locals[source_slot].type == LOCAL_DOCUMENT) { semantic_error(diagnostic, instruction, "call input must be a serializable value, not Document"); goto failed; }
+                if (!type_is_serializable(locals[source_slot].type)) { semantic_error(diagnostic, instruction, "call input must be a serializable value"); goto failed; }
                 if (!adapter_name_valid(instruction->operand.string, instruction->string_length) ) {
                     semantic_error(diagnostic, instruction, "adapter name must use lowercase letters, digits, '.' or '-'"); goto failed;
                 }
@@ -317,7 +321,7 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                 (instruction->statement_kind == DEUS_AST_PUSH_ITEM && locals[target_slot].type != LOCAL_LIST)) {
                 semantic_error(diagnostic, instruction, "compound mutation target has the wrong type"); goto failed;
             }
-            if (locals[value_slot].type == LOCAL_DOCUMENT) { semantic_error(diagnostic, instruction, "Document cannot be stored in a result value"); goto failed; }
+            if (!type_is_serializable(locals[value_slot].type)) { semantic_error(diagnostic, instruction, "compound values require serializable items"); goto failed; }
             if (!add_code(out, DEUS_LOAD, target_slot) || !add_code(out, DEUS_LOAD, value_slot)) goto memory_failed;
             if (instruction->statement_kind == DEUS_AST_SET_FIELD) {
                 if (!intern_string(out, instruction->operand.string, instruction->string_length, &operand) ||
@@ -333,7 +337,7 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                     !memcmp(locals[slot].name, instruction->symbol, instruction->symbol_length)) break;
             if (slot == local_count) { semantic_error(diagnostic, instruction, "unknown local"); goto failed; }
             if (!add_code(out, DEUS_LOAD, slot)) goto memory_failed;
-            depth++; continue;
+            stack_types[depth++] = locals[slot].type; continue;
         }
         if (instruction->operand_kind == DEUS_AST_OPERAND_STRING) {
             if (!intern_string(out, instruction->operand.string, instruction->string_length, &operand)) goto memory_failed;
@@ -347,18 +351,20 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
             if (opcode == DEUS_RETRY && operand > 16u) { semantic_error(diagnostic, instruction, "retry must be at most 16"); goto failed; }
             if (opcode == DEUS_BACKOFF && operand > 60000u) { semantic_error(diagnostic, instruction, "backoff must be at most 60000 ms"); goto failed; }
             if (opcode == DEUS_RATE && operand > 10000u) { semantic_error(diagnostic, instruction, "rate must be at most 10000 rps"); goto failed; }
-        } else if (opcode == DEUS_HUNT) { executor_locked = 1; depth++; }
-        else if (opcode == DEUS_FORK) { executor_locked = 1; depth++; futures++; }
+        } else if (opcode == DEUS_HUNT) { executor_locked = 1; stack_types[depth++] = LOCAL_DOCUMENT; }
+        else if (opcode == DEUS_FORK) { executor_locked = 1; stack_types[depth++] = LOCAL_VALUE; futures++; }
         else if (opcode == DEUS_AWAIT) {
             if (!depth || !futures) { semantic_error(diagnostic, instruction, "await requires a future on stack"); goto failed; }
-            futures--;
+            futures--; stack_types[depth - 1u] = LOCAL_DOCUMENT;
         } else if (opcode == DEUS_JOIN) {
             if (operand == 0u || operand > futures || operand > depth) { semantic_error(diagnostic, instruction, "join exceeds pending futures"); goto failed; }
             futures -= operand;
         } else if (opcode == DEUS_REAP) {
-            if (!depth || futures) { semantic_error(diagnostic, instruction, "reap requires a resolved document stack"); goto failed; }
+            if (!depth || futures || stack_types[depth - 1u] != LOCAL_DOCUMENT) { semantic_error(diagnostic, instruction, "reap requires a resolved Document stack"); goto failed; }
+            stack_types[depth - 1u] = LOCAL_STRING;
         } else if (opcode == DEUS_EMIT || opcode == DEUS_DEBUG) {
             if (!depth || futures) { semantic_error(diagnostic, instruction, opcode == DEUS_EMIT ? "emit requires resolved extraction output" : "debug requires resolved extraction output"); goto failed; }
+            if (!type_is_serializable(stack_types[depth - 1u])) { semantic_error(diagnostic, instruction, opcode == DEUS_EMIT ? "emit requires a serializable value, not Document" : "debug requires a serializable value, not Document"); goto failed; }
             depth--;
         } else if (opcode == DEUS_HALT) {
             if (futures) { semantic_error(diagnostic, instruction, "halt with unresolved futures"); goto failed; }
