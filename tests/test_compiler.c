@@ -153,28 +153,29 @@ static int test_operational_expressions(void) {
                    strstr(diagnostic.message, "serializable") != NULL, "Document debug type rejection");
 }
 static int test_typed_expressions(void) {
-    const char *source = "genesis\nbind score = 95\nbind minimum = 80\nbind verified = true\nbind eligible = verified and score >= minimum\nbind label = null ?? \"fallback\"\nbind score_text = text(score)\nbind parsed = i64(\"42\")\nbind truth = bool(1)\nhalt\n";
+    const char *source = "genesis\nbind score = 95\nbind minimum = 80\nbind verified = true\nbind eligible = verified and score >= minimum\nbind total = score + minimum * 2\nbind label = null ?? \"fallback\"\nbind score_text = text(score)\nbind parsed = i64(\"42\")\nbind truth = bool(1)\nhalt\n";
     const char *invalid = "genesis\nbind bad = 1 and true\nhalt\n";
-    const char *dynamic_invalid = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind bad = result > 1\nhalt\n";
-    const char *dynamic_converted = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind score = i64(result)\nbind accepted = score > 1\nhalt\n";
-    DeusProgram program; DeusDiagnostic diagnostic = {0}; int comparisons = 0, boolean = 0, fallback = 0, conversions = 0;
+    const char *dynamic_invalid = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind bad = result + 1\nhalt\n";
+    const char *dynamic_converted = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind score = i64(result)\nbind accepted = score + 1\nhalt\n";
+    DeusProgram program; DeusDiagnostic diagnostic = {0}; int comparisons = 0, boolean = 0, fallback = 0, conversions = 0, arithmetic = 0;
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "typed expression compilation")) return 0;
     for (uint32_t index = 0; index < program.code_count; index++) {
         uint8_t opcode = program.code[index].opcode;
         if (opcode >= DEUS_EQUAL && opcode <= DEUS_GREATER_EQUAL) comparisons++;
         if (opcode == DEUS_BOOL_NOT || opcode == DEUS_BOOL_AND || opcode == DEUS_BOOL_OR) boolean++;
         if (opcode == DEUS_COALESCE) fallback++;
+        if (opcode >= DEUS_ADD_I64 && opcode <= DEUS_MOD_I64) arithmetic++;
         if (opcode >= DEUS_TO_TEXT && opcode <= DEUS_TO_BOOL) conversions++;
     }
     deus_program_free(&program);
-    if (!require(comparisons == 1 && boolean == 1 && fallback == 1 && conversions == 3,
+    if (!require(comparisons == 1 && boolean == 1 && fallback == 1 && conversions == 3 && arithmetic == 2,
                  "typed expression lowering")) return 0;
     if (!require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
                  strstr(diagnostic.message, "Bool") != NULL, "boolean type rejection")) return 0;
     if (!require(!deus_parse_source(dynamic_invalid, strlen(dynamic_invalid), &program, &diagnostic) &&
-                 strstr(diagnostic.message, "I64") != NULL, "dynamic ordering requires conversion")) return 0;
+                 strstr(diagnostic.message, "arithmetic requires I64") != NULL, "dynamic arithmetic requires conversion")) return 0;
     if (!require(deus_parse_source(dynamic_converted, strlen(dynamic_converted), &program, &diagnostic),
-                 "converted dynamic ordering compilation")) return 0;
+                 "converted dynamic arithmetic compilation")) return 0;
     deus_program_free(&program); return 1;
 }
 static int test_url_templates(void) {

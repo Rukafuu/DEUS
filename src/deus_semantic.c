@@ -167,6 +167,11 @@ static int compile_expression(const DeusExpressionNode *expression, const LocalS
         case DEUS_EXPRESSION_OP_GREATER: opcode = DEUS_GREATER; break;
         case DEUS_EXPRESSION_OP_GREATER_EQUAL: opcode = DEUS_GREATER_EQUAL; break;
         case DEUS_EXPRESSION_OP_COALESCE: opcode = DEUS_COALESCE; break;
+        case DEUS_EXPRESSION_OP_ADD: opcode = DEUS_ADD_I64; break;
+        case DEUS_EXPRESSION_OP_SUBTRACT: opcode = DEUS_SUB_I64; break;
+        case DEUS_EXPRESSION_OP_MULTIPLY: opcode = DEUS_MUL_I64; break;
+        case DEUS_EXPRESSION_OP_DIVIDE: opcode = DEUS_DIV_I64; break;
+        case DEUS_EXPRESSION_OP_MODULO: opcode = DEUS_MOD_I64; break;
         default: return 0;
     }
     if (opcode == DEUS_BOOL_AND || opcode == DEUS_BOOL_OR) {
@@ -179,11 +184,12 @@ static int compile_expression(const DeusExpressionNode *expression, const LocalS
         *type = left_type == LOCAL_NULL ? right_type : left_type == right_type ? left_type : LOCAL_VALUE;
     } else {
         int ordering = opcode >= DEUS_LESS && opcode <= DEUS_GREATER_EQUAL;
-        if (ordering && ((left_type != LOCAL_I64) ||
-                         (right_type != LOCAL_I64))) {
-            snprintf(diagnostic->message, sizeof(diagnostic->message), "ordering comparison requires I64 operands"); return 0;
+        int arithmetic = opcode >= DEUS_ADD_I64 && opcode <= DEUS_MOD_I64;
+        if ((ordering || arithmetic) && ((left_type != LOCAL_I64) ||
+                                       (right_type != LOCAL_I64))) {
+            snprintf(diagnostic->message, sizeof(diagnostic->message), arithmetic ? "arithmetic requires I64 operands" : "ordering comparison requires I64 operands"); return 0;
         }
-        *type = LOCAL_BOOL;
+        *type = arithmetic ? LOCAL_I64 : LOCAL_BOOL;
     }
     return add_code(out, opcode, 0u);
 }

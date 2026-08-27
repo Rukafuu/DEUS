@@ -183,6 +183,16 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
                 return invalid(error, cap, pc, "ordering requires two I64 values");
             depth--; stack[depth - 1u] = TYPE_BOOL;
             break;
+        case DEUS_ADD_I64:
+        case DEUS_SUB_I64:
+        case DEUS_MUL_I64:
+        case DEUS_DIV_I64:
+        case DEUS_MOD_I64:
+            if (depth < 2u || !(stack[depth - 2u] & TYPE_I64) ||
+                !(stack[depth - 1u] & TYPE_I64))
+                return invalid(error, cap, pc, "arithmetic requires two I64 values");
+            depth--; stack[depth - 1u] = TYPE_I64;
+            break;
         case DEUS_EQUAL:
         case DEUS_NOT_EQUAL:
         case DEUS_COALESCE:

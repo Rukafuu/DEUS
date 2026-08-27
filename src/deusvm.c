@@ -2,6 +2,7 @@
 #include "deus_json.h"
 #include "deus_value.h"
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +41,43 @@ struct HuntTask {
 };
 
 static int fail(const char *message) { fprintf(stderr, "deusvm: %s\n", message); return 1; }
+static int checked_i64(uint8_t opcode, int64_t left, int64_t right,
+                       int64_t *result, const char **error) {
+    switch (opcode) {
+    case DEUS_ADD_I64:
+        if ((right > 0 && left > INT64_MAX - right) ||
+            (right < 0 && left < INT64_MIN - right)) { *error = "I64 addition overflow"; return 0; }
+        *result = left + right;
+        return 1;
+    case DEUS_SUB_I64:
+        if ((right > 0 && left < INT64_MIN + right) ||
+            (right < 0 && left > INT64_MAX + right)) { *error = "I64 subtraction overflow"; return 0; }
+        *result = left - right;
+        return 1;
+    case DEUS_MUL_I64:
+        if ((left == INT64_MIN && right == -1) || (right == INT64_MIN && left == -1) ||
+            (left > 0 && ((right > 0 && left > INT64_MAX / right) ||
+                          (right < 0 && right < INT64_MIN / left))) ||
+            (left < 0 && ((right > 0 && left < INT64_MIN / right) ||
+                          (right < 0 && left < INT64_MAX / right)))) { *error = "I64 multiplication overflow"; return 0; }
+        *result = left * right;
+        return 1;
+    case DEUS_DIV_I64:
+        if (!right) { *error = "I64 division by zero"; return 0; }
+        if (left == INT64_MIN && right == -1) { *error = "I64 division overflow"; return 0; }
+        *result = left / right;
+        return 1;
+    case DEUS_MOD_I64:
+        if (!right) { *error = "I64 remainder by zero"; return 0; }
+        if (left == INT64_MIN && right == -1) { *error = "I64 remainder overflow"; return 0; }
+        *result = left % right;
+        return 1;
+    default:
+        *error = "unknown I64 arithmetic operation";
+        return 0;
+    }
+}
+
 
 static wchar_t *widen(const char *source) {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
@@ -502,6 +540,19 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             }
             if (!value_from_managed(found, &extracted)) { rc = fail("structured value cannot be loaded"); break; }
             value_dispose(&stack[sp - 1u]); stack[sp - 1u] = extracted;
+        } else if (in.opcode >= DEUS_ADD_I64 && in.opcode <= DEUS_MOD_I64) {
+            Value left, right; int64_t result; const char *arithmetic_error;
+            if (sp < 2u) { rc = fail("I64 arithmetic requires two operands"); break; }
+            right = stack[--sp]; left = stack[--sp];
+            if (left.kind != V_I64 || right.kind != V_I64) {
+                value_dispose(&left); value_dispose(&right);
+                rc = fail("I64 arithmetic requires two I64 values"); break;
+            }
+            if (!checked_i64(in.opcode, left.scalar, right.scalar, &result, &arithmetic_error)) {
+                value_dispose(&left); value_dispose(&right); rc = fail(arithmetic_error); break;
+            }
+            value_dispose(&left); value_dispose(&right);
+            stack[sp++] = (Value){V_I64, NULL, 0u, NULL, result};
         } else if (in.opcode >= DEUS_EQUAL && in.opcode <= DEUS_COALESCE) {
             Value left, right; int result = 0;
             if (in.opcode == DEUS_BOOL_NOT) {

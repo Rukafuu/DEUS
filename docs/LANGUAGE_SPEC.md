@@ -257,8 +257,10 @@ Requirements:
 3. Logical AND: `and` (left-associative)
 4. Equality: `==`, `!=` (left-associative)
 5. Comparison: `<`, `<=`, `>`, `>=` (left-associative)
-6. Unary: `not`
-7. Primary: literals, identifiers, conversions, parenthesized expressions
+6. Additive: `+`, `-` (left-associative)
+7. Multiplicative: `*`, `/`, `%` (left-associative)
+8. Unary: `-`, `not`
+9. Primary: literals, identifiers, conversions, parenthesized expressions
 
 ### 6.2 Arithmetic Operators
 

@@ -22,6 +22,28 @@ static char *reap(const char *h,size_t n,const char *s,size_t sn,size_t *outn){s
 static int call_adapter(Runtime *r,const char *name,size_t n,const Value *input,DeusValueContext *ctx,Value *out,char *e,size_t cap){const DeusHost *h=r->host;DeusValue value=deus_value_null(),result=deus_value_null();int ok;if(!h||h->abi_version!=DEUS_HOST_ABI_VERSION||!(h->capabilities&DEUS_HOST_CAP_ADAPTER_CALL)||!h->call){snprintf(e,cap,"portable runtime requires DeusHost adapter capability");return 0;}if(!to_managed(input,ctx,&value)){snprintf(e,cap,"adapter input is not serializable");return 0;}ok=h->call(h->context,name,n,&value,ctx,&result,e,cap);deus_value_dispose(&value);if(!ok){if(cap&&!e[0])snprintf(e,cap,"host adapter call failed");deus_value_dispose(&result);return 0;}if(!from_managed(&result,out)){snprintf(e,cap,"host adapter returned a non-serializable value");deus_value_dispose(&result);return 0;}deus_value_dispose(&result);return 1;}
 static int unreserved(unsigned char b){return(b>='A'&&b<='Z')||(b>='a'&&b<='z')||(b>='0'&&b<='9')||b=='-'||b=='.'||b=='_'||b=='~';}
 static int encode(Value *v){static const char x[]="0123456789ABCDEF";char b[32];const char *p=v->data;size_t n=v->len,i,u=0;char *o;if(v->kind==V_I64){int z=snprintf(b,sizeof(b),"%lld",(long long)v->scalar);if(z<0)return 0;p=b;n=(size_t)z;}else if(v->kind==V_BOOL){p=v->scalar?"true":"false";n=v->scalar?4u:5u;}else if(v->kind!=V_STRING&&v->kind!=V_TEXT)return 0;if(n>URL_MAX/3u)return 0;o=(char*)malloc(n*3u+1u);if(!o)return 0;for(i=0;i<n;i++){unsigned char c=(unsigned char)p[i];if(unreserved(c))o[u++]=(char)c;else{o[u++]='%';o[u++]=x[c>>4];o[u++]=x[c&15u];}}o[u]=0;drop(v);*v=(Value){V_STRING,o,u,0,{0}};return 1;}
+static int checked_i64(uint8_t opcode,int64_t left,int64_t right,int64_t *result,const char **error){
+    switch(opcode){
+        case DEUS_ADD_I64:
+            if((right>0&&left>INT64_MAX-right)||(right<0&&left<INT64_MIN-right)){*error="I64 addition overflow";return 0;}
+            *result=left+right;return 1;
+        case DEUS_SUB_I64:
+            if((right>0&&left<INT64_MIN+right)||(right<0&&left>INT64_MAX+right)){*error="I64 subtraction overflow";return 0;}
+            *result=left-right;return 1;
+        case DEUS_MUL_I64:
+            if(left!=0&&right!=0&&((left>0&&(right>0?left>INT64_MAX/right:right<INT64_MIN/left))||(left<0&&(right>0?left<INT64_MIN/right:left<INT64_MAX/right)))){*error="I64 multiplication overflow";return 0;}
+            *result=left*right;return 1;
+        case DEUS_DIV_I64:
+            if(right==0){*error="I64 division by zero";return 0;}
+            if(left==INT64_MIN&&right==-1){*error="I64 division overflow";return 0;}
+            *result=left/right;return 1;
+        case DEUS_MOD_I64:
+            if(right==0){*error="I64 remainder by zero";return 0;}
+            if(left==INT64_MIN&&right==-1){*error="I64 remainder overflow";return 0;}
+            *result=left%right;return 1;
+        default:*error="unknown I64 arithmetic operation";return 0;
+    }
+}
 int deus_vm_execute_program_with_host(const DeusProgram *p,FILE *out,const DeusHost *host){Value st[STACK_MAX]={{0}},loc[DEUS_MAX_LOCALS]={{0}};uint32_t origins[STACK_MAX];unsigned char bound[DEUS_MAX_LOCALS]={0};Runtime rt={host,2u};DeusValueContext *ctx;size_t sp=0;uint32_t pc;int rc=0;char err[192]={0};for(pc=0;pc<STACK_MAX;pc++)origins[pc]=UINT32_MAX;if(!deus_validate_program(p,err,sizeof(err)))return fail(err);if(!out)return fail("output stream is required");ctx=deus_value_context_create(NULL);if(!ctx)return fail("value context allocation failed");
 for(pc=0;pc<p->code_count;pc++){DeusInstruction in=p->code[pc];const char *a=in.operand<p->string_count?p->strings[in.operand].data:"";size_t an=in.operand<p->string_count?p->strings[in.operand].len:0u;
 if(in.opcode==DEUS_OMNI||in.opcode==DEUS_GENESIS||in.opcode==DEUS_LIMIT||in.opcode==DEUS_BACKOFF||in.opcode==DEUS_RATE){}
@@ -56,6 +78,7 @@ int rec=in.opcode==DEUS_RECORD_GET||in.opcode==DEUS_RECORD_GET_OPTIONAL,opt=in.o
 if(st[sp-1u].kind!=V_MANAGED||(rec&&st[sp-1u].managed.kind!=DEUS_VALUE_RECORD)||(!rec&&st[sp-1u].managed.kind!=DEUS_VALUE_LIST)){if(opt){drop(&st[sp-1u]);st[sp-1u]=(Value){V_NULL,NULL,0,0,{0}};continue;}rc=fail(rec?"RECORD_GET requires a record":"LIST_AT requires a list");break;}
 f=rec?deus_value_record_get(&st[sp-1u].managed,a,an):deus_value_list_at(&st[sp-1u].managed,in.operand);
 if(!f&&!opt){rc=fail(rec?"record field was not found":"list index is out of bounds");break;}if(!f){drop(&st[sp-1u]);st[sp-1u]=(Value){V_NULL,NULL,0,0,{0}};}else if(!from_managed(f,&x)){rc=fail("structured value cannot be loaded");break;}else{drop(&st[sp-1u]);st[sp-1u]=x;}}
+else if(in.opcode>=DEUS_ADD_I64&&in.opcode<=DEUS_MOD_I64){Value right=st[--sp],left=st[--sp];int64_t result;const char *message=NULL;if(left.kind!=V_I64||right.kind!=V_I64){drop(&left);drop(&right);rc=fail("I64 arithmetic requires I64 operands");break;}if(!checked_i64(in.opcode,left.scalar,right.scalar,&result,&message)){drop(&left);drop(&right);rc=fail(message);break;}drop(&left);drop(&right);st[sp++]=(Value){V_I64,NULL,0,result,{0}};}
 else if(in.opcode==DEUS_BOOL_NOT)st[sp-1u].scalar=!st[sp-1u].scalar;
 else if((in.opcode>=DEUS_EQUAL&&in.opcode<=DEUS_COALESCE)){Value r=st[--sp],l=st[--sp];int b=0;if(in.opcode==DEUS_COALESCE){if(l.kind==V_NULL){drop(&l);st[sp++]=r;}else{drop(&r);st[sp++]=l;}continue;}if(in.opcode==DEUS_BOOL_AND||in.opcode==DEUS_BOOL_OR)b=in.opcode==DEUS_BOOL_AND?(l.scalar&&r.scalar):(l.scalar||r.scalar);else if(in.opcode>=DEUS_LESS&&in.opcode<=DEUS_GREATER_EQUAL)b=in.opcode==DEUS_LESS?l.scalar<r.scalar:in.opcode==DEUS_LESS_EQUAL?l.scalar<=r.scalar:in.opcode==DEUS_GREATER?l.scalar>r.scalar:l.scalar>=r.scalar;else{int eq=l.kind==r.kind;if(eq&&(l.kind==V_BOOL||l.kind==V_I64))eq=l.scalar==r.scalar;else if(eq&&(l.kind==V_STRING||l.kind==V_TEXT))eq=l.len==r.len&&!memcmp(l.data,r.data,l.len);else if(eq&&l.kind!=V_NULL)eq=0;b=in.opcode==DEUS_EQUAL?eq:!eq;}drop(&l);drop(&r);st[sp++]=(Value){V_BOOL,NULL,0,b,{0}};}
 else if(in.opcode==DEUS_TO_TEXT||in.opcode==DEUS_TO_I64||in.opcode==DEUS_TO_BOOL){Value *v=&st[sp-1u];char b[32],*end=NULL;if(in.opcode==DEUS_TO_TEXT){int n;char *q;if(v->kind==V_STRING||v->kind==V_TEXT)continue;n=v->kind==V_I64?snprintf(b,sizeof(b),"%lld",(long long)v->scalar):snprintf(b,sizeof(b),"%s",v->scalar?"true":"false");q=n<0?NULL:(char*)malloc((size_t)n+1u);if(!q){rc=fail("conversion allocation failed");break;}memcpy(q,b,(size_t)n+1u);drop(v);*v=(Value){V_STRING,q,(size_t)n,0,{0}};}else if(in.opcode==DEUS_TO_I64){long long n;if(v->kind==V_I64)continue;if(v->kind==V_BOOL){v->kind=V_I64;continue;}errno=0;n=strtoll(v->data,&end,10);if(errno==ERANGE||!end||(size_t)(end-v->data)!=v->len){rc=fail("invalid I64 text");break;}drop(v);*v=(Value){V_I64,NULL,0,n,{0}};}else{int boolean;if(v->kind==V_BOOL)continue;if(v->kind==V_I64){v->kind=V_BOOL;v->scalar=v->scalar!=0;continue;}boolean=v->len==4u&&!memcmp(v->data,"true",4u)?1:v->len==5u&&!memcmp(v->data,"false",5u)?0:-1;if(boolean<0){rc=fail("invalid Bool text");break;}drop(v);*v=(Value){V_BOOL,NULL,0,boolean,{0}};}}

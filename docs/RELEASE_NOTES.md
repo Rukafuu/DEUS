@@ -7,6 +7,11 @@
 - Boolean and ordering operators now require statically known Bool and I64 values. Convert adapter or JSON values explicitly before using them in logic.
 - `emit` and `debug` reject known `Document` values during compilation.
 
+### Checked I64 arithmetic
+
+- `+`, `-`, `*`, `/`, and `%` compile only for statically known I64 operands.
+- Arithmetic detects overflow; division and modulo reject zero divisors. Division truncates toward zero.
+
 ### Diagnostics
 
 - `debug` writes a serializable top-of-stack value to stderr, leaving stdout reserved for `emit` output.
@@ -19,5 +24,5 @@
 
 ### Compatibility
 
-- Bytecode ABI is version 3 because of the `DEBUG` opcode. Host ABI remains version 2. Recompile DEUS programs after upgrading from ABI v2.
+- Bytecode ABI is version 4 because it adds the checked I64 arithmetic opcodes. Host ABI remains version 2. Recompile DEUS programs after upgrading from ABI v3.
 - A host must explicitly advertise `DEUS_HOST_CAP_ADAPTER_CALL`; no ambient network, filesystem, model, or database access is granted by the language.

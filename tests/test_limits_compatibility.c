@@ -112,9 +112,11 @@ static void test_frozen_public_contract(void) {
         {DEUS_LESS_EQUAL, 0x26}, {DEUS_GREATER, 0x27},
         {DEUS_GREATER_EQUAL, 0x28}, {DEUS_COALESCE, 0x29},
         {DEUS_TO_TEXT, 0x2A}, {DEUS_TO_I64, 0x2B},
-        {DEUS_TO_BOOL, 0x2C}, {DEUS_HOST_CALL, 0x2D}, {DEUS_DEBUG, 0x2E}    };
+        {DEUS_TO_BOOL, 0x2C}, {DEUS_HOST_CALL, 0x2D}, {DEUS_DEBUG, 0x2E},
+        {DEUS_ADD_I64, 0x2F}, {DEUS_SUB_I64, 0x30}, {DEUS_MUL_I64, 0x31},
+        {DEUS_DIV_I64, 0x32}, {DEUS_MOD_I64, 0x33}    };
     size_t index;
-    _Static_assert(DEUS_ABI_VERSION == 3u, "bytecode ABI changed");
+    _Static_assert(DEUS_ABI_VERSION == 4u, "bytecode ABI changed");
     _Static_assert(DEUS_HOST_ABI_VERSION == 2u, "host ABI changed");
     _Static_assert(DEUS_HEADER_SIZE == 40u, "header size changed");
     for (index = 0u; index < sizeof(opcodes) / sizeof(opcodes[0]); index++) {
