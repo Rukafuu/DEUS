@@ -205,6 +205,15 @@ static int array_child(const JsonParser *parser, int array, size_t wanted) {
     return -1;
 }
 
+static const char *scalar_kind_name(DeusJsonScalarKind kind) {
+    switch (kind) {
+        case DEUS_JSON_NULL: return "Null";
+        case DEUS_JSON_BOOL: return "Bool";
+        case DEUS_JSON_I64: return "I64";
+        case DEUS_JSON_STRING: return "String";
+        default: return "unknown";
+    }
+}
 void deus_json_scalar_dispose(DeusJsonScalar *scalar) {
     if (!scalar) return;
     free(scalar->string);
@@ -260,4 +269,41 @@ int deus_json_extract_scalar(const char *json, size_t json_length,
     long long integer = strtoll(number, &end, 10);
     if (errno == ERANGE || !end || *end) { if (error_cap) snprintf(error, error_cap, "JSON integer exceeds i64"); return 0; }
     out->kind = DEUS_JSON_I64; out->integer = (int64_t)integer; return 1;
+}
+int deus_json_validate_scalar_contract(const char *json, size_t json_length,
+                                       const DeusJsonScalarContract *fields,
+                                       size_t field_count, char *error, size_t error_cap) {
+    size_t index;
+    if (error_cap) error[0] = '\0';
+    if (!json || !fields || !field_count) {
+        if (error_cap) snprintf(error, error_cap, "JSON contract requires at least one field");
+        return 0;
+    }
+    for (index = 0u; index < field_count; index++) {
+        DeusJsonScalar value;
+        const DeusJsonScalarContract *field = &fields[index];
+        if (!field->path || !field->path_length || field->kind > DEUS_JSON_STRING) {
+            if (error_cap) snprintf(error, error_cap, "invalid JSON contract field %zu", index + 1u);
+            return 0;
+        }
+        if (!deus_json_extract_scalar(json, json_length, field->path, field->path_length,
+                                      &value, error, error_cap)) {
+            if (error_cap && error[0]) {
+                char detail[192];
+                snprintf(detail, sizeof(detail), "%s", error);
+                snprintf(error, error_cap, "JSON contract field %zu failed: %s", index + 1u, detail);
+            }
+            return 0;
+        }
+        if (value.kind != field->kind && !(field->nullable && value.kind == DEUS_JSON_NULL)) {
+            if (error_cap) snprintf(error, error_cap,
+                                    "JSON contract field %zu expected %s, got %s",
+                                    index + 1u, scalar_kind_name(field->kind),
+                                    scalar_kind_name(value.kind));
+            deus_json_scalar_dispose(&value);
+            return 0;
+        }
+        deus_json_scalar_dispose(&value);
+    }
+    return 1;
 }

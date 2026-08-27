@@ -22,7 +22,7 @@ static char *reap(const char *h,size_t n,const char *s,size_t sn,size_t *outn){s
 static int call_adapter(Runtime *r,const char *name,size_t n,const Value *input,DeusValueContext *ctx,Value *out,char *e,size_t cap){const DeusHost *h=r->host;DeusValue value=deus_value_null(),result=deus_value_null();int ok;if(!h||h->abi_version!=DEUS_HOST_ABI_VERSION||!(h->capabilities&DEUS_HOST_CAP_ADAPTER_CALL)||!h->call){snprintf(e,cap,"portable runtime requires DeusHost adapter capability");return 0;}if(!to_managed(input,ctx,&value)){snprintf(e,cap,"adapter input is not serializable");return 0;}ok=h->call(h->context,name,n,&value,ctx,&result,e,cap);deus_value_dispose(&value);if(!ok){if(cap&&!e[0])snprintf(e,cap,"host adapter call failed");deus_value_dispose(&result);return 0;}if(!from_managed(&result,out)){snprintf(e,cap,"host adapter returned a non-serializable value");deus_value_dispose(&result);return 0;}deus_value_dispose(&result);return 1;}
 static int unreserved(unsigned char b){return(b>='A'&&b<='Z')||(b>='a'&&b<='z')||(b>='0'&&b<='9')||b=='-'||b=='.'||b=='_'||b=='~';}
 static int encode(Value *v){static const char x[]="0123456789ABCDEF";char b[32];const char *p=v->data;size_t n=v->len,i,u=0;char *o;if(v->kind==V_I64){int z=snprintf(b,sizeof(b),"%lld",(long long)v->scalar);if(z<0)return 0;p=b;n=(size_t)z;}else if(v->kind==V_BOOL){p=v->scalar?"true":"false";n=v->scalar?4u:5u;}else if(v->kind!=V_STRING&&v->kind!=V_TEXT)return 0;if(n>URL_MAX/3u)return 0;o=(char*)malloc(n*3u+1u);if(!o)return 0;for(i=0;i<n;i++){unsigned char c=(unsigned char)p[i];if(unreserved(c))o[u++]=(char)c;else{o[u++]='%';o[u++]=x[c>>4];o[u++]=x[c&15u];}}o[u]=0;drop(v);*v=(Value){V_STRING,o,u,0,{0}};return 1;}
-int deus_vm_execute_program_with_host(const DeusProgram *p,FILE *out,const DeusHost *host){Value st[STACK_MAX]={{0}},loc[DEUS_MAX_LOCALS]={{0}};unsigned char bound[DEUS_MAX_LOCALS]={0};Runtime rt={host,2u};DeusValueContext *ctx;size_t sp=0;uint32_t pc;int rc=0;char err[192]={0};if(!deus_validate_program(p,err,sizeof(err)))return fail(err);if(!out)return fail("output stream is required");ctx=deus_value_context_create(NULL);if(!ctx)return fail("value context allocation failed");
+int deus_vm_execute_program_with_host(const DeusProgram *p,FILE *out,const DeusHost *host){Value st[STACK_MAX]={{0}},loc[DEUS_MAX_LOCALS]={{0}};uint32_t origins[STACK_MAX];unsigned char bound[DEUS_MAX_LOCALS]={0};Runtime rt={host,2u};DeusValueContext *ctx;size_t sp=0;uint32_t pc;int rc=0;char err[192]={0};for(pc=0;pc<STACK_MAX;pc++)origins[pc]=UINT32_MAX;if(!deus_validate_program(p,err,sizeof(err)))return fail(err);if(!out)return fail("output stream is required");ctx=deus_value_context_create(NULL);if(!ctx)return fail("value context allocation failed");
 for(pc=0;pc<p->code_count;pc++){DeusInstruction in=p->code[pc];const char *a=in.operand<p->string_count?p->strings[in.operand].data:"";size_t an=in.operand<p->string_count?p->strings[in.operand].len:0u;
 if(in.opcode==DEUS_OMNI||in.opcode==DEUS_GENESIS||in.opcode==DEUS_LIMIT||in.opcode==DEUS_BACKOFF||in.opcode==DEUS_RATE){}
 else if(in.opcode==DEUS_RETRY)rt.retries=in.operand;
@@ -33,12 +33,24 @@ else if(in.opcode==DEUS_CONST_BOOL)st[sp++]=(Value){V_BOOL,NULL,0,in.operand?1:0
 else if(in.opcode==DEUS_CONST_I64)st[sp++]=(Value){V_I64,NULL,0,in.immediate,{0}};
 else if(in.opcode==DEUS_CONST_RECORD||in.opcode==DEUS_CONST_LIST){DeusValue v;int ok=in.opcode==DEUS_CONST_RECORD?deus_value_record(ctx,&v):deus_value_list(ctx,&v);if(!ok){rc=fail(deus_value_context_error(ctx));break;}st[sp]=(Value){0};st[sp].kind=V_MANAGED;st[sp++].managed=v;}
 else if(in.opcode==DEUS_BIND){loc[in.operand]=st[--sp];memset(&st[sp],0,sizeof(st[sp]));bound[in.operand]=1;}
-else if(in.opcode==DEUS_LOAD){if(!bound[in.operand]||!clone(&loc[in.operand],&st[sp])){rc=fail("invalid VM state at LOAD");break;}sp++;}
+else if(in.opcode==DEUS_LOAD){if(!bound[in.operand]||!clone(&loc[in.operand],&st[sp])){rc=fail("invalid VM state at LOAD");break;}origins[sp]=in.operand;sp++;}
 else if(in.opcode==DEUS_AWAIT)st[sp-1u].kind=V_DOC;
 else if(in.opcode==DEUS_JOIN){size_t i;for(i=sp-in.operand;i<sp;i++)st[i].kind=V_DOC;}
 else if(in.opcode==DEUS_REAP){Value v=st[--sp];size_t n;char *q=reap(v.data,v.len,a,an,&n);drop(&v);if(!q){rc=fail("REAP allocation failed");break;}st[sp++]=(Value){V_TEXT,q,n,0,{0}};}
 else if(in.opcode==DEUS_JSON_PATH){DeusJsonScalar s;Value v=st[--sp];if(!deus_json_extract_scalar(v.data,v.len,a,an,&s,err,sizeof(err))){drop(&v);rc=fail(err);break;}drop(&v);if(s.kind==DEUS_JSON_STRING){st[sp++]=(Value){V_STRING,s.string,s.string_length,0,{0}};s.string=NULL;}else if(s.kind==DEUS_JSON_I64)st[sp++]=(Value){V_I64,NULL,0,s.integer,{0}};else if(s.kind==DEUS_JSON_BOOL)st[sp++]=(Value){V_BOOL,NULL,0,s.boolean?1:0,{0}};else st[sp++]=(Value){V_NULL,NULL,0,0,{0}};deus_json_scalar_dispose(&s);}
-else if(in.opcode==DEUS_RECORD_SET||in.opcode==DEUS_LIST_PUSH){DeusValue item;Value *c=&st[sp-2u],*v=&st[sp-1u];int ok;if(!to_managed(v,ctx,&item)){rc=fail("invalid compound mutation");break;}ok=in.opcode==DEUS_RECORD_SET?deus_value_record_set(&c->managed,a,an,&item):deus_value_list_append(&c->managed,&item);deus_value_dispose(&item);if(!ok){rc=fail(deus_value_context_error(ctx));break;}drop(v);drop(c);sp-=2u;}
+else if(in.opcode==DEUS_RECORD_SET||in.opcode==DEUS_LIST_PUSH){
+    DeusValue item;
+    uint32_t target_local;
+    Value *c=&st[sp-2u],*v=&st[sp-1u];
+    int ok;
+    target_local=origins[sp-2u];
+    if(!to_managed(v,ctx,&item)){rc=fail("invalid compound mutation");break;}
+    ok=in.opcode==DEUS_RECORD_SET?deus_value_record_set(&c->managed,a,an,&item):deus_value_list_append(&c->managed,&item);
+    deus_value_dispose(&item);
+    if(!ok){rc=fail(deus_value_context_error(ctx));break;}
+    if(target_local<DEUS_MAX_LOCALS&&bound[target_local]){deus_value_dispose(&loc[target_local].managed);deus_value_move(&loc[target_local].managed,&c->managed);}
+    drop(v);drop(c);sp-=2u;
+}
 else if(in.opcode==DEUS_RECORD_GET||in.opcode==DEUS_RECORD_GET_OPTIONAL||in.opcode==DEUS_LIST_AT||in.opcode==DEUS_LIST_AT_OPTIONAL){
 int rec=in.opcode==DEUS_RECORD_GET||in.opcode==DEUS_RECORD_GET_OPTIONAL,opt=in.opcode==DEUS_RECORD_GET_OPTIONAL||in.opcode==DEUS_LIST_AT_OPTIONAL;const DeusValue *f;Value x;
 if(st[sp-1u].kind!=V_MANAGED||(rec&&st[sp-1u].managed.kind!=DEUS_VALUE_RECORD)||(!rec&&st[sp-1u].managed.kind!=DEUS_VALUE_LIST)){if(opt){drop(&st[sp-1u]);st[sp-1u]=(Value){V_NULL,NULL,0,0,{0}};continue;}rc=fail(rec?"RECORD_GET requires a record":"LIST_AT requires a list");break;}

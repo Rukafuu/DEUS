@@ -404,8 +404,9 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
     DeusProgram p = *input; char error[192];
     if (!deus_validate_program(input, error, sizeof(error))) return fail(error);
     Runtime rt = {0}; rt.limit = 8; rt.retries = 2; rt.backoff_ms = 100; rt.host = host; InitializeCriticalSection(&rt.rate_lock);
-    Value stack[STACK_MAX] = {0}; size_t sp = 0; int began = 0, rc = 0;
+    Value stack[STACK_MAX] = {0}; uint32_t stack_origins[STACK_MAX]; size_t sp = 0; int began = 0, rc = 0;
     Value locals[DEUS_MAX_LOCALS] = {0}; unsigned char local_bound[DEUS_MAX_LOCALS] = {0};
+    for (uint32_t slot = 0u; slot < STACK_MAX; slot++) stack_origins[slot] = UINT32_MAX;
     DeusValueContext *value_context = deus_value_context_create(NULL);
     if (!value_context) { DeleteCriticalSection(&rt.rate_lock); return fail("value context allocation failed"); }
 
@@ -456,9 +457,10 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             }
             stack[sp] = (Value){0}; stack[sp].kind = V_MANAGED; stack[sp++].managed = managed;
         } else if (in.opcode == DEUS_RECORD_SET || in.opcode == DEUS_LIST_PUSH) {
-            DeusValue item; Value *container, *source;
+            DeusValue item; uint32_t target_local; Value *container, *source;
             if (sp < 2u) { rc = fail("compound mutation requires container and value"); break; }
             container = &stack[sp - 2u]; source = &stack[sp - 1u];
+            target_local = stack_origins[sp - 2u];
             if (container->kind != V_MANAGED ||
                 (in.opcode == DEUS_RECORD_SET && container->managed.kind != DEUS_VALUE_RECORD) ||
                 (in.opcode == DEUS_LIST_PUSH && container->managed.kind != DEUS_VALUE_LIST) ||
@@ -468,6 +470,10 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
                 deus_value_list_append(&container->managed, &item);
             deus_value_dispose(&item);
             if (!changed) { rc = fail(deus_value_context_error(value_context)); break; }
+            if (target_local < DEUS_MAX_LOCALS && local_bound[target_local]) {
+                deus_value_dispose(&locals[target_local].managed);
+                deus_value_move(&locals[target_local].managed, &container->managed);
+            }
             value_dispose(source); value_dispose(container); sp -= 2u;
         } else if (in.opcode == DEUS_RECORD_GET || in.opcode == DEUS_LIST_AT ||
                    in.opcode == DEUS_RECORD_GET_OPTIONAL || in.opcode == DEUS_LIST_AT_OPTIONAL) {
@@ -580,6 +586,7 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
         } else if (in.opcode == DEUS_LOAD) {
             if (!began || sp == STACK_MAX || in.operand >= DEUS_MAX_LOCALS || !local_bound[in.operand] ||
                 !value_clone(&locals[in.operand], &stack[sp])) { rc = fail("invalid VM state at LOAD"); break; }
+            stack_origins[sp] = in.operand;
             sp++;
         } else if (in.opcode == DEUS_AWAIT) {
             if (!sp || stack[sp - 1].kind != V_FUTURE) { rc = fail("AWAIT expected future"); break; }

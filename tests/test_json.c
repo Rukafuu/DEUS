@@ -19,6 +19,21 @@ int main(void) {
                  scalar.kind == DEUS_JSON_I64 && scalar.integer == 2023, "integer extraction")) return 1;
     if (!require(deus_json_extract_scalar(json, strlen(json), "$.results[0].ok", 15u, &scalar, error, sizeof(error)) &&
                  scalar.kind == DEUS_JSON_BOOL && scalar.boolean, "boolean extraction")) return 1;
+    DeusJsonScalarContract result_contract[] = {
+        {"$.results[0].title", 18u, DEUS_JSON_STRING, 0},
+        {"$.results[0].year", 17u, DEUS_JSON_I64, 0},
+        {"$.results[0].ok", 15u, DEUS_JSON_BOOL, 0},
+        {"$.results[0].missing", 20u, DEUS_JSON_STRING, 1}
+    };
+    if (!require(deus_json_validate_scalar_contract(json, strlen(json), result_contract,
+                                                     sizeof(result_contract) / sizeof(result_contract[0]),
+                                                     error, sizeof(error)), "scalar contract validation")) return 1;
+    result_contract[1].kind = DEUS_JSON_STRING;
+    if (!require(!deus_json_validate_scalar_contract(json, strlen(json), result_contract,
+                                                      sizeof(result_contract) / sizeof(result_contract[0]),
+                                                      error, sizeof(error)) && strstr(error, "expected String, got I64"),
+                 "scalar contract type rejection")) return 1;
+    result_contract[1].kind = DEUS_JSON_I64;
     if (!require(!deus_json_extract_scalar("{\"x\":1.5}", 9u, "$.x", 3u, &scalar, error, sizeof(error)) &&
                  strstr(error, "not an i64"), "fraction rejection")) return 1;
     if (!require(!deus_json_extract_scalar("{\"x\":[]}", 8u, "$.x", 3u, &scalar, error, sizeof(error)) &&
@@ -34,11 +49,11 @@ int main(void) {
     if (!require(!deus_json_extract_scalar((const char *)invalid_utf8, sizeof(invalid_utf8), "$.x", 3u, &scalar, error, sizeof(error)) &&
                  strstr(error, "UTF-8"), "invalid UTF-8 rejection")) return 1;
     DeusString strings[] = {{"$.x", 3u}};
-    DeusInstruction code[] = {{DEUS_GENESIS, 0u, 0}, {DEUS_JSON_PATH, 0u, 0}, {DEUS_HALT, 0u, 0}};
-    DeusProgram program = {strings, 1u, code, 3u}, decoded = {0};
+    DeusInstruction code[] = {{DEUS_GENESIS, 0u, 0}, {DEUS_HUNT, 0u, 0}, {DEUS_JSON_PATH, 0u, 0}, {DEUS_HALT, 0u, 0}};
+    DeusProgram program = {strings, 1u, code, 4u}, decoded = {0};
     if (!require(deus_write_binary(&program, "deus_json_test.deusb", error, sizeof(error)) &&
                  deus_read_binary("deus_json_test.deusb", &decoded, error, sizeof(error)), "JSON opcode round-trip")) return 1;
-    int opcode_ok = decoded.code_count == 3u && decoded.code[1].opcode == DEUS_JSON_PATH && decoded.code[1].operand == 0u;
+    int opcode_ok = decoded.code_count == 4u && decoded.code[2].opcode == DEUS_JSON_PATH && decoded.code[2].operand == 0u;
     deus_program_free(&decoded); remove("deus_json_test.deusb");
     if (!require(opcode_ok, "JSON opcode preservation")) return 1;
     return 0;

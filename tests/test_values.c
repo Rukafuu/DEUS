@@ -16,7 +16,7 @@ int main(void) {
     limits.memory_bytes = 4096u; limits.max_depth = 2u;
     limits.max_list_items = 2u; limits.max_record_fields = 2u; limits.max_blob_bytes = 128u;
     DeusValueContext *context = deus_value_context_create(&limits);
-    DeusValue text, bytes, list, record, nested, outer, document, future, error, copy;
+    DeusValue text, bytes, list, record, nested, outer, document, future, error, copy, list_copy, record_copy, alias_list;
     const DeusValue *found; size_t length; int payload = 7; FILE *json_output; char json[64] = {0};
     static const unsigned char raw[] = {0u, 1u, 2u};
     if (!require(context != NULL, "context allocation")) return 1;
@@ -30,6 +30,19 @@ int main(void) {
         !require(!deus_value_list_append(&list, &text), "list limit")) return 1;
     if (!require(deus_value_record_set(&record, "title", 5u, &text), "record field") ||
         !require(deus_value_record_set(&record, "score", 5u, &(DeusValue){DEUS_VALUE_I64, {.integer = 95}}), "integer field")) return 1;
+    if (!require(deus_value_list(context, &alias_list), "alias list") ||
+        !require(deus_value_list_append(&alias_list, &text), "seed alias list")) return 1;
+    deus_value_copy(&list_copy, &alias_list);
+    if (!require(deus_value_list_append(&list_copy, &bytes), "detach copied list") ||
+        !require(deus_value_list_count(&alias_list) == 1u && deus_value_list_count(&list_copy) == 2u,
+                 "list copy-on-write isolation")) return 1;
+    deus_value_copy(&record_copy, &record);
+    if (!require(deus_value_record_set(&record_copy, "title", 5u,
+                                       &(DeusValue){DEUS_VALUE_I64, {.integer = 100}}),
+                 "detach copied record") ||
+        !require(deus_value_record_get(&record, "title", 5u)->kind == DEUS_VALUE_STRING &&
+                 deus_value_record_get(&record_copy, "title", 5u)->kind == DEUS_VALUE_I64,
+                 "record copy-on-write isolation")) return 1;
     found = deus_value_record_get(&record, "title", 5u);
     if (!require(found && deus_value_data(found, &length) && length == 7u, "record lookup")) return 1;
     json_output = tmpfile();
@@ -49,8 +62,8 @@ int main(void) {
         !require(deus_value_error_code(&error) == 42, "error code")) return 1;
     deus_value_copy(&copy, &text); deus_value_dispose(&text);
     if (!require(deus_value_data(&copy, &length) && length == 7u, "reference-counted copy")) return 1;
-    deus_value_dispose(&copy); deus_value_dispose(&bytes); deus_value_dispose(&list);
-    deus_value_dispose(&record); deus_value_dispose(&nested); deus_value_dispose(&outer); deus_value_dispose(&document);
+    deus_value_dispose(&copy); deus_value_dispose(&bytes); deus_value_dispose(&list); deus_value_dispose(&list_copy); deus_value_dispose(&alias_list);
+    deus_value_dispose(&record); deus_value_dispose(&record_copy); deus_value_dispose(&nested); deus_value_dispose(&outer); deus_value_dispose(&document);
     deus_value_dispose(&future); deus_value_dispose(&error);
     if (!require(finalized == 7, "future finalizer") ||
         !require(deus_value_context_memory_used(context) == 0u, "all owned memory released")) return 1;

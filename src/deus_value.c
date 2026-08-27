@@ -290,6 +290,54 @@ static int grow_array(DeusValueContext *context, void **items, size_t item_size,
     *items = next; *capacity = next_capacity; return 1;
 }
 
+/* Collections are exposed as reference-counted values. Detach before a
+ * mutation so an API-level copy remains a stable snapshot. */
+static int detach_collection(DeusValue *value) {
+    DeusValueObject *source, *copy;
+    size_t count, index;
+    if (!value || (value->kind != DEUS_VALUE_LIST && value->kind != DEUS_VALUE_RECORD) ||
+        !value->as.object || value->as.object->references == 1u) return 1;
+    source = value->as.object;
+    copy = object_create(source->context, source->kind);
+    if (!copy) return 0;
+    copy->depth = source->depth;
+    if (source->kind == DEUS_VALUE_LIST) {
+        count = source->as.list.count;
+        if (count) {
+            copy->as.list.items = (DeusValue *)context_alloc(copy->context, count * sizeof(*copy->as.list.items));
+            if (!copy->as.list.items) { context_free(copy->context, copy, sizeof(*copy)); return 0; }
+            copy->as.list.capacity = count;
+            for (index = 0; index < count; index++) {
+                deus_value_copy(&copy->as.list.items[index], &source->as.list.items[index]);
+                copy->as.list.count++;
+            }
+        }
+    } else {
+        count = source->as.record.count;
+        if (count) {
+            copy->as.record.fields = (DeusRecordField *)context_alloc(copy->context, count * sizeof(*copy->as.record.fields));
+            if (!copy->as.record.fields) { context_free(copy->context, copy, sizeof(*copy)); return 0; }
+            copy->as.record.capacity = count;
+            for (index = 0; index < count; index++) {
+                const DeusRecordField *source_field = &source->as.record.fields[index];
+                DeusRecordField *copy_field = &copy->as.record.fields[index];
+                copy_field->key = (char *)context_alloc(copy->context, source_field->key_length + 1u);
+                if (!copy_field->key) {
+                    DeusValue partial = {DEUS_VALUE_RECORD, {.object = copy}};
+                    deus_value_dispose(&partial);
+                    return 0;
+                }
+                memcpy(copy_field->key, source_field->key, source_field->key_length + 1u);
+                copy_field->key_length = source_field->key_length;
+                deus_value_copy(&copy_field->value, &source_field->value);
+                copy->as.record.count++;
+            }
+        }
+    }
+    source->references--;
+    value->as.object = copy;
+    return 1;
+}
 int deus_value_list_append(DeusValue *list, const DeusValue *item) {
     DeusValueObject *object; uint32_t depth;
     if (!list || list->kind != DEUS_VALUE_LIST || !list->as.object || !item) return 0;
@@ -298,6 +346,8 @@ int deus_value_list_append(DeusValue *list, const DeusValue *item) {
     if (object->as.list.count >= object->context->limits.max_list_items) { set_error(object->context, "list item limit exceeded"); return 0; }
     depth = value_depth(item) + 1u;
     if (depth > object->context->limits.max_depth) { set_error(object->context, "value depth limit exceeded"); return 0; }
+    if (!detach_collection(list)) return 0;
+    object = list->as.object;
     if (object->as.list.count == object->as.list.capacity &&
         !grow_array(object->context, (void **)&object->as.list.items, sizeof(*object->as.list.items), object->as.list.count, &object->as.list.capacity)) return 0;
     deus_value_copy(&object->as.list.items[object->as.list.count++], item);
@@ -320,6 +370,8 @@ int deus_value_record_set(DeusValue *record, const char *key, size_t key_length,
     if (!utf8_valid(key, key_length)) { set_error(object->context, "invalid UTF-8 record key"); return 0; }
     depth = value_depth(value) + 1u;
     if (depth > object->context->limits.max_depth) { set_error(object->context, "value depth limit exceeded"); return 0; }
+    if (!detach_collection(record)) return 0;
+    object = record->as.object;
     for (size_t i = 0; i < object->as.record.count; i++) {
         DeusRecordField *field = &object->as.record.fields[i];
         if (field->key_length == key_length && !memcmp(field->key, key, key_length)) {

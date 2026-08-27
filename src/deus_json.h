@@ -19,9 +19,19 @@ typedef struct {
     size_t string_length;
 } DeusJsonScalar;
 
+typedef struct {
+    const char *path;
+    size_t path_length;
+    DeusJsonScalarKind kind;
+    int nullable;
+} DeusJsonScalarContract;
+
 int deus_json_extract_scalar(const char *json, size_t json_length,
                              const char *path, size_t path_length,
                              DeusJsonScalar *out, char *error, size_t error_cap);
+int deus_json_validate_scalar_contract(const char *json, size_t json_length,
+                                       const DeusJsonScalarContract *fields,
+                                       size_t field_count, char *error, size_t error_cap);
 void deus_json_scalar_dispose(DeusJsonScalar *scalar);
 
 #endif

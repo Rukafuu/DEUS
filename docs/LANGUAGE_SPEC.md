@@ -175,6 +175,8 @@ Expression types:
 - Hunt: `bind doc = hunt "url"`
 - Reap: `bind text = reap doc "selector"`
 - JSON: `bind obj = json doc "$.path"`
+
+JSON extracted from a Document is dynamic. Hosts may preflight known scalar shapes with the additive [JSON contract API](JSON_CONTRACTS.md) before executing a flow.
 - Get: `bind val = get record "field"` (errors if missing)
 - Get?: `bind val = get? record "field"` (returns `Null` if missing)
 - At: `bind item = at list index` (errors if out of bounds)
@@ -499,7 +501,7 @@ Key opcodes:
 
 The following features require dedicated RFCs before implementation:
 
-1. **Arithmetic expressions** (`+`, `-`, `*`, `/`, `%`)
+1. **Arithmetic expressions** (`+`, `-`, `*`, `/`, `%`; proposed in [RFC-0002](RFC-0002-CHECKED-I64-ARITHMETIC.md))
 2. **Member access syntax** (`record.field`)
 3. **Item access syntax** (`list[index]`)
 4. **Pipeline construct** (`pipeline items as item: filter ... rank ... take`)
