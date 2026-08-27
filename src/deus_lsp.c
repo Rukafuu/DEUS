@@ -147,19 +147,25 @@ static int word_at(const char *text, unsigned wanted_line, unsigned character, c
     if (current != wanted_line) return 0;
     end = strchr(line, '\n');
     if (!end) end = line + strlen(line);
-    cursor = line + character; if (cursor > end) cursor = end;
+    cursor = line + character;
+    if (cursor > end) cursor = end;
     while (cursor > line && !isalnum((unsigned char)*cursor) && *cursor != '_') cursor--;
-    start = cursor; while (start > line && (isalnum((unsigned char)start[-1]) || start[-1] == '_')) start--;
+    start = cursor;
+    while (start > line && (isalnum((unsigned char)start[-1]) || start[-1] == '_')) start--;
     while (cursor < end && (isalnum((unsigned char)*cursor) || *cursor == '_')) cursor++;
-    length = (size_t)(cursor - start); if (!length || length >= capacity) return 0;
-    memcpy(word, start, length); word[length] = '\0'; return 1;
+    length = (size_t)(cursor - start);
+    if (!length || length >= capacity) return 0;
+    memcpy(word, start, length);
+    word[length] = '\0';
+    return 1;
 }
 
 static const char *hover_text(const char *word) {
     static const struct { const char *word, *text; } entries[] = {
         {"flow", "Declares a named DEUS retrieval flow."}, {"bind", "Binds a typed value to a local name."},
         {"hunt", "Retrieves a document through an authorized host capability."}, {"reap", "Extracts data from a resolved document."},
-        {"parallel", "Runs bounded retrieval operations concurrently."}, {"emit", "Emits the value currently on the stack."},
+        {"parallel", "Runs bounded retrieval operations concurrently."}, {"emit", "Emits the value currently on the stack."}, {"debug", "Writes the value currently on the stack to diagnostics."},
+        {"call", "Invokes a named adapter exposed by an authorized host capability."},
         {"omni", "Declares a host module requirement; it does not grant authority."}, {"limit", "Sets the maximum concurrent retrieval count."}
     };
     for (size_t i = 0u; i < sizeof(entries) / sizeof(entries[0]); i++) if (!strcmp(word, entries[i].word)) return entries[i].text;

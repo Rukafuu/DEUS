@@ -17,8 +17,9 @@ halt
 expressions cannot perform host effects.
 
 ```deus
-bind candidate = {"title": "Frieren", "score": 95}
-bind title = get candidate "title"
+bind candidate = {"title": "Frieren", "scores": [95, 88]}
+bind title = candidate.title
+bind first_score = candidate.scores[0]
 bind subtitle = get? candidate "subtitle"
 bind label = subtitle ?? "Untitled"
 ```

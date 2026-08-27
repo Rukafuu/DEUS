@@ -1,9 +1,67 @@
-/target/
-/build/
-/build-*/
-/dist/
-/deus_project_test_tmp/
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
+*.a
+*.so
+*.dll
+*.exe
 *.deusb
-.DS_Store
-editors/vscode/
+
+# Build and generated project artifacts
+build/
+build-*/
+dist/
+target/
 website/target/
+deus_project_test_tmp/
+
+# Dependencies and runtimes
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.gradle/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Local environment and editors
+.env
+.env.local
+*.env.*
+.vscode/
+.idea/
+editors/vscode/
+
+# System and coverage files
+.DS_Store
+Thumbs.db
+coverage/
+htmlcov/
+.coverage
+
+# Archives
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo

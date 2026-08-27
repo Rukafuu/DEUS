@@ -74,6 +74,7 @@ static int test_grammar_surface(void) {
         "bind optional_field = get? object \"missing\"\n"
         "bind first = at empty_list 0\n"
         "bind optional_item = at? empty_list 1\n"
+        "load title\ndebug\n"
         "load title\nemit\n"
         "fork \"https://example.test/a\"\nawait\n"
         "fork \"https://example.test/b\"\njoin 1\n"
@@ -133,6 +134,8 @@ static int test_operational_expressions(void) {
     const char *source = "omni \"net.http2\"\ngenesis\nbind page = hunt \"deus://catalog/test\"\nbind title = reap page \"h1\"\nload title\nemit\nhalt\n";
     const char *invalid = "genesis\nbind value = 42\nbind title = reap value \"h1\"\nhalt\n";
     const char *late_config = "genesis\nhunt \"https://example.test\"\nlimit 2\nreap \"h1\"\nemit\nhalt\n";
+    const char *document_emit = "genesis\nbind page = hunt \"https://example.test\"\nload page\nemit\nhalt\n";
+    const char *document_debug = "genesis\nbind page = hunt \"https://example.test\"\nload page\ndebug\nhalt\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0};
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "operational expression compilation")) return 0;
     int ok = program.code_count == 10u && program.code[2].opcode == DEUS_HUNT &&
@@ -142,30 +145,39 @@ static int test_operational_expressions(void) {
     if (!require(ok, "operational expression lowering")) return 0;
     if (!require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
                  strstr(diagnostic.message, "Document") != NULL, "reap type rejection")) return 0;
-    return require(!deus_parse_source(late_config, strlen(late_config), &program, &diagnostic) &&
-                   strstr(diagnostic.message, "network execution") != NULL, "late executor configuration rejection");
+    if (!require(!deus_parse_source(late_config, strlen(late_config), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "network execution") != NULL, "late executor configuration rejection")) return 0;
+    if (!require(!deus_parse_source(document_emit, strlen(document_emit), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "serializable") != NULL, "Document emit type rejection")) return 0;
+    return require(!deus_parse_source(document_debug, strlen(document_debug), &program, &diagnostic) &&
+                   strstr(diagnostic.message, "serializable") != NULL, "Document debug type rejection");
 }
-
 static int test_typed_expressions(void) {
-    const char *source = "genesis\nbind score = 95\nbind minimum = 80\nbind verified = true\nbind eligible = verified and score >= minimum\nbind label = null ?? \"fallback\"\nbind score_text = text(score)\nbind parsed = i64(\"42\")\nbind truth = bool(1)\nhalt\n";
+    const char *source = "genesis\nbind score = 95\nbind minimum = 80\nbind verified = true\nbind eligible = verified and score >= minimum\nbind total = score + minimum * 2\nbind label = null ?? \"fallback\"\nbind score_text = text(score)\nbind parsed = i64(\"42\")\nbind truth = bool(1)\nhalt\n";
     const char *invalid = "genesis\nbind bad = 1 and true\nhalt\n";
-    DeusProgram program; DeusDiagnostic diagnostic = {0}; int comparisons = 0, boolean = 0, fallback = 0, conversions = 0;
+    const char *dynamic_invalid = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind bad = result + 1\nhalt\n";
+    const char *dynamic_converted = "genesis\nbind input = \"42\"\nbind result = call \"demo.value\" input\nbind score = i64(result)\nbind accepted = score + 1\nhalt\n";
+    DeusProgram program; DeusDiagnostic diagnostic = {0}; int comparisons = 0, boolean = 0, fallback = 0, conversions = 0, arithmetic = 0;
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "typed expression compilation")) return 0;
     for (uint32_t index = 0; index < program.code_count; index++) {
         uint8_t opcode = program.code[index].opcode;
         if (opcode >= DEUS_EQUAL && opcode <= DEUS_GREATER_EQUAL) comparisons++;
-        if (opcode >= DEUS_BOOL_AND && opcode <= DEUS_BOOL_NOT) boolean++;
+        if (opcode == DEUS_BOOL_NOT || opcode == DEUS_BOOL_AND || opcode == DEUS_BOOL_OR) boolean++;
         if (opcode == DEUS_COALESCE) fallback++;
+        if (opcode >= DEUS_ADD_I64 && opcode <= DEUS_MOD_I64) arithmetic++;
         if (opcode >= DEUS_TO_TEXT && opcode <= DEUS_TO_BOOL) conversions++;
     }
     deus_program_free(&program);
-    if (!require(comparisons == 1 && boolean == 1 && fallback == 1 && conversions == 3,
+    if (!require(comparisons == 1 && boolean == 1 && fallback == 1 && conversions == 3 && arithmetic == 2,
                  "typed expression lowering")) return 0;
-    return require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
-                   strstr(diagnostic.message, "Bool") != NULL, "boolean type rejection");
+    if (!require(!deus_parse_source(invalid, strlen(invalid), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "Bool") != NULL, "boolean type rejection")) return 0;
+    if (!require(!deus_parse_source(dynamic_invalid, strlen(dynamic_invalid), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "arithmetic requires I64") != NULL, "dynamic arithmetic requires conversion")) return 0;
+    if (!require(deus_parse_source(dynamic_converted, strlen(dynamic_converted), &program, &diagnostic),
+                 "converted dynamic arithmetic compilation")) return 0;
+    deus_program_free(&program); return 1;
 }
-
-
 static int test_dynamic_scalar_narrowing(void) {
     const char *ordering = "genesis\nbind page = hunt \"https://example.test\"\nbind score = json page \"$.score\"\nbind eligible = score >= 80\nhalt\n";
     const char *boolean = "genesis\nbind page = hunt \"https://example.test\"\nbind verified = json page \"$.verified\"\nbind eligible = not verified\nhalt\n";
@@ -216,8 +228,10 @@ static int test_emit_serialization(void) {
                    "Document emit rejection");
 }
 static int test_structured_reads(void) {
-    const char *source = "genesis\nbind item = {\"title\": \"Frieren\", \"meta\": {\"score\": 95}}\nbind items = [item, null]\nbind first = at items 0\nbind copied = get first \"title\"\nbind missing = get? first \"subtitle\"\nbind absent = at? items 99\nhalt\n";
+    const char *source = "genesis\nbind item = {\"title\": \"Frieren\", \"meta\": {\"score\": 95}}\nbind items = [item, null]\nbind first = at items 0\nbind direct_title = item.title\nbind direct_score = item.meta.score\nbind direct_first = items[0]\nbind copied = get first \"title\"\nbind missing = get? first \"subtitle\"\nbind absent = at? items 99\nhalt\n";
     const char *wrong = "genesis\nbind title = \"Frieren\"\nbind copied = get title \"name\"\nhalt\n";
+    const char *member_wrong = "genesis\nbind title = \"Frieren\"\nbind copied = title.name\nhalt\n";
+    const char *index_wrong = "genesis\nbind items = [1]\nbind copied = items[-1]\nhalt\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0}; int get = 0, at = 0, optional = 0, records = 0, scalar_constants = 0;
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "structured read compilation")) return 0;
     for (uint32_t index = 0; index < program.code_count; index++) {
@@ -230,10 +244,14 @@ static int test_structured_reads(void) {
             program.code[index].opcode == DEUS_CONST_NULL) scalar_constants++;
     }
     deus_program_free(&program);
-    if (!require(get == 1 && at == 1 && optional == 2 && records == 2 && scalar_constants == 3,
+    if (!require(get == 4 && at == 2 && optional == 2 && records == 2 && scalar_constants == 3,
                  "nested structured literal and read lowering")) return 0;
-    return require(!deus_parse_source(wrong, strlen(wrong), &program, &diagnostic) &&
-                   strstr(diagnostic.message, "Record") != NULL, "structured source type rejection");
+    if (!require(!deus_parse_source(wrong, strlen(wrong), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "Record") != NULL, "legacy structured source type rejection")) return 0;
+    if (!require(!deus_parse_source(member_wrong, strlen(member_wrong), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "member access requires Record") != NULL, "member access type rejection")) return 0;
+    return require(!deus_parse_source(index_wrong, strlen(index_wrong), &program, &diagnostic) &&
+                   strstr(diagnostic.message, "unsigned integer literal") != NULL, "item access index rejection");
 }
 
 static int test_indented_flow(void) {

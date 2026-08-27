@@ -33,6 +33,19 @@ static int require_top(const uint16_t *stack, uint32_t depth, uint16_t allowed,
            invalid(error, cap, pc, "%s", message);
 }
 
+static int adapter_name_valid(const DeusProgram *program, uint32_t operand) {
+    const DeusString *name; uint32_t index;
+    if (operand >= program->string_count) return 0;
+    name = &program->strings[operand];
+    if (!name->len || name->data[0] < 'a' || name->data[0] > 'z') return 0;
+    for (index = 1u; index < name->len; index++) {
+        char character = name->data[index];
+        if (!((character >= 'a' && character <= 'z') ||
+              (character >= '0' && character <= '9') || character == '.' || character == '-')) return 0;
+    }
+    return 1;
+}
+
 int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
     uint16_t stack[VERIFY_STACK_MAX] = {0}, locals[DEUS_MAX_LOCALS] = {0};
     unsigned char bound[DEUS_MAX_LOCALS] = {0};
@@ -142,12 +155,12 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
             break;
         case DEUS_RECORD_GET:
         case DEUS_RECORD_GET_OPTIONAL:
-            if (!require_top(stack, depth, TYPE_RECORD, error, cap, pc, "record read requires a record")) return 0;
+            if (!require_top(stack, depth, TYPE_RECORD | TYPE_VALUE, error, cap, pc, "record read requires a record")) return 0;
             stack[depth - 1u] = TYPE_VALUE;
             break;
         case DEUS_LIST_AT:
         case DEUS_LIST_AT_OPTIONAL:
-            if (!require_top(stack, depth, TYPE_LIST, error, cap, pc, "list read requires a list")) return 0;
+            if (!require_top(stack, depth, TYPE_LIST | TYPE_VALUE, error, cap, pc, "list read requires a list")) return 0;
             stack[depth - 1u] = TYPE_VALUE;
             break;
         case DEUS_BOOL_NOT:
@@ -169,6 +182,16 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
                 !(stack[depth - 1u] & TYPE_I64))
                 return invalid(error, cap, pc, "ordering requires two I64 values");
             depth--; stack[depth - 1u] = TYPE_BOOL;
+            break;
+        case DEUS_ADD_I64:
+        case DEUS_SUB_I64:
+        case DEUS_MUL_I64:
+        case DEUS_DIV_I64:
+        case DEUS_MOD_I64:
+            if (depth < 2u || !(stack[depth - 2u] & TYPE_I64) ||
+                !(stack[depth - 1u] & TYPE_I64))
+                return invalid(error, cap, pc, "arithmetic requires two I64 values");
+            depth--; stack[depth - 1u] = TYPE_I64;
             break;
         case DEUS_EQUAL:
         case DEUS_NOT_EQUAL:
@@ -198,9 +221,17 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
                                        error, cap, pc, "HUNT_VALUE requires a URL string")) return 0;
             executor_locked = 1; stack[depth - 1u] = TYPE_DOCUMENT;
             break;
-        case DEUS_EMIT:
+        case DEUS_HOST_CALL:
+            if (!began || !adapter_name_valid(program, in.operand))
+                return invalid(error, cap, pc, "HOST_CALL requires a valid adapter name");
             if (!require_top(stack, depth, TYPE_VALUE, error, cap, pc,
-                             "EMIT requires a serializable value")) return 0;
+                             "HOST_CALL requires a serializable input value")) return 0;
+            executor_locked = 1; stack[depth - 1u] = TYPE_VALUE;
+            break;
+        case DEUS_EMIT:
+        case DEUS_DEBUG:
+            if (!require_top(stack, depth, TYPE_VALUE, error, cap, pc,
+                             in.opcode == DEUS_EMIT ? "EMIT requires a serializable value" : "DEBUG requires a serializable value")) return 0;
             depth--;
             break;
         case DEUS_HALT:

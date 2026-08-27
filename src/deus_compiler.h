@@ -23,7 +23,13 @@ typedef enum {
     DEUS_TOKEN_LESS_EQUAL,
     DEUS_TOKEN_GREATER,
     DEUS_TOKEN_GREATER_EQUAL,
-    DEUS_TOKEN_COALESCE
+    DEUS_TOKEN_COALESCE,
+    DEUS_TOKEN_PLUS,
+    DEUS_TOKEN_MINUS,
+    DEUS_TOKEN_STAR,
+    DEUS_TOKEN_SLASH,
+    DEUS_TOKEN_PERCENT,
+    DEUS_TOKEN_DOT
 } DeusTokenKind;
 
 typedef struct {
@@ -46,11 +52,14 @@ typedef enum {
     DEUS_EXPRESSION_LOCAL,
     DEUS_EXPRESSION_UNARY,
     DEUS_EXPRESSION_BINARY,
-    DEUS_EXPRESSION_CONVERSION
+    DEUS_EXPRESSION_CONVERSION,
+    DEUS_EXPRESSION_MEMBER_ACCESS,
+    DEUS_EXPRESSION_ITEM_ACCESS
 } DeusExpressionNodeKind;
 
 typedef enum {
     DEUS_EXPRESSION_OP_NOT,
+    DEUS_EXPRESSION_OP_NEGATE,
     DEUS_EXPRESSION_OP_AND,
     DEUS_EXPRESSION_OP_OR,
     DEUS_EXPRESSION_OP_EQUAL,
@@ -60,6 +69,11 @@ typedef enum {
     DEUS_EXPRESSION_OP_GREATER,
     DEUS_EXPRESSION_OP_GREATER_EQUAL,
     DEUS_EXPRESSION_OP_COALESCE,
+    DEUS_EXPRESSION_OP_ADD,
+    DEUS_EXPRESSION_OP_SUBTRACT,
+    DEUS_EXPRESSION_OP_MULTIPLY,
+    DEUS_EXPRESSION_OP_DIVIDE,
+    DEUS_EXPRESSION_OP_MODULO,
     DEUS_EXPRESSION_OP_TEXT,
     DEUS_EXPRESSION_OP_I64,
     DEUS_EXPRESSION_OP_BOOL
@@ -74,6 +88,8 @@ struct DeusExpressionNode {
     uint32_t string_length;
     char *symbol;
     uint32_t symbol_length;
+    DeusExpressionNode *object;      /* for member/item access: the container */
+    DeusExpressionNode *accessor;    /* for member access: field name; for item access: index expression */
     DeusExpressionNode *left;
     DeusExpressionNode *right;
     unsigned line, column;
@@ -102,6 +118,7 @@ typedef enum {
     DEUS_AST_EXPRESSION_LOCAL,
     DEUS_AST_EXPRESSION_HUNT,
     DEUS_AST_EXPRESSION_REAP,
+    DEUS_AST_EXPRESSION_CALL,
     DEUS_AST_EXPRESSION_JSON,
     DEUS_AST_EXPRESSION_RECORD,
     DEUS_AST_EXPRESSION_LIST,

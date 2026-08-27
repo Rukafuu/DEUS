@@ -321,8 +321,7 @@ int deus_source_parse_modern(const char *source, size_t length,
     out->source = (char *)malloc(length + 1u);
     if (!out->source) return fail(&parser, 1u, 1u, "out of memory");
     if (length) memcpy(out->source, source, length);
-    out->source[length] = '\0';
-    out->source_length = length;
+    out->source[length] = '\0'; out->source_length = length;
     if (!index_line_starts(&parser)) goto failed;
     if (!scan_lines(&parser)) goto failed;
     if (!build_layout_events(&parser)) goto failed;

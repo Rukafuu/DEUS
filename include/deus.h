@@ -4,12 +4,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "deus_value.h"
 
-#define DEUS_HOST_ABI_VERSION 1u
+#define DEUS_HOST_ABI_VERSION 2u
 #define DEUS_OUTPUT_ABI_VERSION 1u
 #define DEUS_EXECUTION_ABI_VERSION 1u
 #define DEUS_DEFAULT_INSTRUCTION_LIMIT UINT64_C(1000000)
-#define DEUS_ABI_VERSION 1u
+#define DEUS_ABI_VERSION 4u
 #define DEUS_HEADER_SIZE 40u
 #define DEUS_MAX_SECTION (64u * 1024u * 1024u)
 #define DEUS_MAX_STRINGS 1000000u
@@ -32,7 +33,9 @@ typedef enum {
     DEUS_LESS_EQUAL = 0x23, DEUS_GREATER = 0x24, DEUS_GREATER_EQUAL = 0x25,
     DEUS_BOOL_AND = 0x26, DEUS_BOOL_OR = 0x27, DEUS_BOOL_NOT = 0x28,
     DEUS_COALESCE = 0x29, DEUS_TO_TEXT = 0x2A, DEUS_TO_I64 = 0x2B,
-    DEUS_TO_BOOL = 0x2C
+    DEUS_TO_BOOL = 0x2C, DEUS_HOST_CALL = 0x2D, DEUS_DEBUG = 0x2E,
+    DEUS_ADD_I64 = 0x2F, DEUS_SUB_I64 = 0x30, DEUS_MUL_I64 = 0x31,
+    DEUS_DIV_I64 = 0x32, DEUS_MOD_I64 = 0x33
 } DeusOpcode;
 
 typedef struct { char *data; uint32_t len; } DeusString;
@@ -44,7 +47,8 @@ typedef struct {
 typedef struct { unsigned line, column; char message[192]; } DeusDiagnostic;
 
 enum {
-    DEUS_HOST_CAP_NETWORK = 1u << 0
+    DEUS_HOST_CAP_NETWORK = 1u << 0,
+    DEUS_HOST_CAP_ADAPTER_CALL = 1u << 1
 };
 
 typedef struct {
@@ -61,6 +65,9 @@ typedef struct {
     int (*hunt)(void *context, const char *url, size_t url_length,
                 DeusHostDocument *document, char *error, size_t error_cap);
     void (*release_document)(void *context, DeusHostDocument *document);
+    int (*call)(void *context, const char *adapter, size_t adapter_length,
+                const DeusValue *input, DeusValueContext *values,
+                DeusValue *output, char *error, size_t error_cap);
 } DeusHost;
 
 typedef int (*DeusOutputWrite)(void *context, const void *data, size_t length);

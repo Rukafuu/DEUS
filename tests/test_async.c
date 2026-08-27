@@ -114,7 +114,7 @@ static int test_expressions(void) {
 static int test_embedded_host(void) {
     const char *source = "omni \"net.http2\"\ngenesis\nbind query = \"frieren white\"\nbind year = 2023\nbind page = hunt \"deus://catalog/{query}/{year}\"\nbind title = json page \"$.results[0].title\"\nbind result_year = json page \"$.results[0].year\"\nbind ok = json page \"$.results[0].ok\"\nload title\nemit\nload result_year\nemit\nload ok\nemit\nhalt\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0}; MockHostState state = {0};
-    DeusHost host = {DEUS_HOST_ABI_VERSION, DEUS_HOST_CAP_NETWORK, &state, mock_hunt, mock_release};
+    DeusHost host = {DEUS_HOST_ABI_VERSION, DEUS_HOST_CAP_NETWORK, &state, mock_hunt, mock_release, NULL};
     FILE *output = NULL; char text[32] = {0};
     if (!deus_parse_source(source, strlen(source), &program, &diagnostic)) {
         fprintf(stderr, "host source %u:%u: %s\n", diagnostic.line, diagnostic.column, diagnostic.message); return 0;
@@ -137,7 +137,7 @@ static int test_nested_reap(void) {
         "bind by_id = reap page \"#title\"\nload by_id\nemit\nhalt\n";
     const char *line = "Hello nested inline HTML\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0}; MockHostState state = {0};
-    DeusHost host = {DEUS_HOST_ABI_VERSION, DEUS_HOST_CAP_NETWORK, &state, mock_html_hunt, mock_release};
+    DeusHost host = {DEUS_HOST_ABI_VERSION, DEUS_HOST_CAP_NETWORK, &state, mock_html_hunt, mock_release, NULL};
     FILE *output = NULL; char text[96] = {0};
     if (!deus_parse_source(source, strlen(source), &program, &diagnostic)) return 0;
     if (fopen_s(&output, "deus_reap_output.txt", "wb") || !output) { deus_program_free(&program); return 0; }

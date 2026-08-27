@@ -19,6 +19,21 @@ int main(void) {
                  scalar.kind == DEUS_JSON_I64 && scalar.integer == 2023, "integer extraction")) return 1;
     if (!require(deus_json_extract_scalar(json, strlen(json), "$.results[0].ok", 15u, &scalar, error, sizeof(error)) &&
                  scalar.kind == DEUS_JSON_BOOL && scalar.boolean, "boolean extraction")) return 1;
+    DeusJsonScalarContract result_contract[] = {
+        {"$.results[0].title", 18u, DEUS_JSON_STRING, 0},
+        {"$.results[0].year", 17u, DEUS_JSON_I64, 0},
+        {"$.results[0].ok", 15u, DEUS_JSON_BOOL, 0},
+        {"$.results[0].missing", 20u, DEUS_JSON_STRING, 1}
+    };
+    if (!require(deus_json_validate_scalar_contract(json, strlen(json), result_contract,
+                                                     sizeof(result_contract) / sizeof(result_contract[0]),
+                                                     error, sizeof(error)), "scalar contract validation")) return 1;
+    result_contract[1].kind = DEUS_JSON_STRING;
+    if (!require(!deus_json_validate_scalar_contract(json, strlen(json), result_contract,
+                                                      sizeof(result_contract) / sizeof(result_contract[0]),
+                                                      error, sizeof(error)) && strstr(error, "expected String, got I64"),
+                 "scalar contract type rejection")) return 1;
+    result_contract[1].kind = DEUS_JSON_I64;
     if (!require(!deus_json_extract_scalar("{\"x\":1.5}", 9u, "$.x", 3u, &scalar, error, sizeof(error)) &&
                  strstr(error, "not an i64"), "fraction rejection")) return 1;
     if (!require(!deus_json_extract_scalar("{\"x\":[]}", 8u, "$.x", 3u, &scalar, error, sizeof(error)) &&
