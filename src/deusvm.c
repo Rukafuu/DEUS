@@ -621,18 +621,18 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
                 stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, scalar.boolean ? 1 : 0};
             else stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0};
             deus_json_scalar_dispose(&scalar);
-        } else if (in.opcode == DEUS_EMIT) {
-            Value value;
-            if (!sp) { rc = fail("EMIT expected a value"); break; }
+        } else if (in.opcode == DEUS_EMIT || in.opcode == DEUS_DEBUG) {
+            Value value; FILE *stream = in.opcode == DEUS_EMIT ? output : stderr;
+            if (!sp) { rc = fail(in.opcode == DEUS_EMIT ? "EMIT expected a value" : "DEBUG expected a value"); break; }
             value = stack[--sp];
-            if (value.kind == V_TEXT || value.kind == V_STRING) fwrite(value.data, 1, value.len, output);
-            else if (value.kind == V_NULL) fputs("null", output);
-            else if (value.kind == V_BOOL) fputs(value.scalar ? "true" : "false", output);
-            else if (value.kind == V_I64) fprintf(output, "%lld", (long long)value.scalar);
+            if (value.kind == V_TEXT || value.kind == V_STRING) fwrite(value.data, 1, value.len, stream);
+            else if (value.kind == V_NULL) fputs("null", stream);
+            else if (value.kind == V_BOOL) fputs(value.scalar ? "true" : "false", stream);
+            else if (value.kind == V_I64) fprintf(stream, "%lld", (long long)value.scalar);
             else if (value.kind == V_MANAGED) {
-                if (!deus_value_write_json(&value.managed, output)) { value_dispose(&value); rc = fail("EMIT failed to serialize compound value"); break; }
+                if (!deus_value_write_json(&value.managed, stream)) { value_dispose(&value); rc = fail(in.opcode == DEUS_EMIT ? "EMIT failed to serialize compound value" : "DEBUG failed to serialize compound value"); break; }
             }
-            else { value_dispose(&value); rc = fail("EMIT cannot serialize this value"); break; }
+            else { value_dispose(&value); rc = fail(in.opcode == DEUS_EMIT ? "EMIT cannot serialize this value" : "DEBUG cannot serialize this value"); break; }
             value_dispose(&value);
         } else if (in.opcode == DEUS_HALT) break;
     }

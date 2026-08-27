@@ -7,7 +7,7 @@
 [![Platforms](https://img.shields.io/badge/Tooling-Windows%20%7C%20Linux%20%7C%20macOS-0078D4)](docs/PORTABILITY.md)
 [![CMake](https://img.shields.io/badge/Build-CMake-064F8C?logo=cmake)](https://cmake.org/)
 [![C17](https://img.shields.io/badge/Implementation-C17-00599C?logo=c)](https://en.wikipedia.org/wiki/C17_(C_standard_revision))
-[![ABI](https://img.shields.io/badge/Bytecode_ABI-v1-8A2BE2)](docs/BYTECODE.md)
+[![ABI](https://img.shields.io/badge/Bytecode_ABI-v3-8A2BE2)](docs/BYTECODE.md)
 [![Status](https://img.shields.io/badge/Status-Experimental-FF6B6B)](#open-source-and-community)
 
 DEUS is an experimental language for describing safe information acquisition,

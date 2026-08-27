@@ -1,4 +1,4 @@
-# DEUS bytecode ABI v1
+# DEUS bytecode ABI v3
 
 Technical reference for the physical `.deusb` format. Language usage and design
 rules live in the repository README and `DESIGN.md`.
@@ -73,6 +73,8 @@ remain zero before execution.
 | `0x2A` | `TO_TEXT` | — | scalar to `String` |
 | `0x2B` | `TO_I64` | — | scalar to `I64` |
 | `0x2C` | `TO_BOOL` | — | scalar to `Bool` |
+| `0x2D` | `HOST_CALL` | adapter index | `[Value] → [Value]` via authorized host |
+| `0x2E` | `DEBUG` | — | `[Value] → []` written to diagnostics |
 
 Programs may define at most 256 local slots. `BIND` transfers ownership into an
 empty slot; `LOAD` pushes an independent copy. Uninitialized slots and rebinding
@@ -81,5 +83,5 @@ are rejected.
 ## Versioning
 
 Language milestones, releases, the host ABI, and this physical ABI are versioned
-independently. Additive opcodes may remain ABI v1 while old programs remain valid.
+independently. A new opcode increments the bytecode ABI. Readers reject binaries from a different ABI version.
 Readers reject unknown or malformed instructions.

@@ -74,6 +74,7 @@ static int test_grammar_surface(void) {
         "bind optional_field = get? object \"missing\"\n"
         "bind first = at empty_list 0\n"
         "bind optional_item = at? empty_list 1\n"
+        "load title\ndebug\n"
         "load title\nemit\n"
         "fork \"https://example.test/a\"\nawait\n"
         "fork \"https://example.test/b\"\njoin 1\n"

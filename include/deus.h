@@ -7,7 +7,7 @@
 #include "deus_value.h"
 
 #define DEUS_HOST_ABI_VERSION 2u
-#define DEUS_ABI_VERSION 2u
+#define DEUS_ABI_VERSION 3u
 #define DEUS_HEADER_SIZE 40u
 #define DEUS_MAX_SECTION (64u * 1024u * 1024u)
 #define DEUS_MAX_STRINGS 1000000u
@@ -29,7 +29,7 @@ typedef enum {
     DEUS_EQUAL = 0x23, DEUS_NOT_EQUAL = 0x24, DEUS_LESS = 0x25,
     DEUS_LESS_EQUAL = 0x26, DEUS_GREATER = 0x27, DEUS_GREATER_EQUAL = 0x28,
     DEUS_COALESCE = 0x29, DEUS_TO_TEXT = 0x2A, DEUS_TO_I64 = 0x2B,
-    DEUS_TO_BOOL = 0x2C, DEUS_HOST_CALL = 0x2D
+    DEUS_TO_BOOL = 0x2C, DEUS_HOST_CALL = 0x2D, DEUS_DEBUG = 0x2E
 } DeusOpcode;
 
 typedef struct { char *data; uint32_t len; } DeusString;

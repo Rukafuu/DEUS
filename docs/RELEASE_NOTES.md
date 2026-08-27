@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Diagnostics
+
+- `debug` writes a serializable top-of-stack value to stderr, leaving stdout reserved for `emit` output.
+
 ### Host adapter results
 
 - The language supports `bind output = call "adapter.operation" input` through the host adapter capability.
@@ -10,5 +14,5 @@
 
 ### Compatibility
 
-- Bytecode ABI and host ABI are version 2. Recompile DEUS programs and update host embeddings together when moving from ABI v1.
+- Bytecode ABI is version 3 because of the `DEBUG` opcode. Host ABI remains version 2. Recompile DEUS programs after upgrading from ABI v2.
 - A host must explicitly advertise `DEUS_HOST_CAP_ADAPTER_CALL`; no ambient network, filesystem, model, or database access is granted by the language.

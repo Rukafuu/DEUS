@@ -147,7 +147,8 @@ T? ≤ U?             (If T ≤ U, then T? ≤ U?)
 |-------------|---------|-------------|
 | `genesis` | — | Marks program entry (exactly one required) |
 | `await` | — | Wait for all pending futures |
-| `emit` | — | Output top of stack (must be serializable) |
+| `emit` | — | Output top of stack to stdout (must be serializable) |
+| `debug` | — | Write top of stack to stderr (must be serializable) |
 | `halt` | — | Terminate program (exactly one required) |
 | `hunt` | string URL | Fetch URL, returns `Document` or `Future<Document>` |
 | `reap` | local, string CSS | Extract from document, returns `String` or `List<String>` |
@@ -396,7 +397,7 @@ bind config = {
 - All values flow through the stack
 - `bind` pops from stack and creates local
 - `load` pushes local to stack
-- `emit` consumes top of stack
+- `emit` and `debug` consume top of stack
 - Compiler validates stack balance
 
 ### 8.4 Capability Checks
@@ -421,7 +422,7 @@ Validation ranges:
 
 ### 8.6 Serialization Validation
 
-`emit` requires serializable values:
+`emit` and `debug` require serializable values:
 
 **Serializable**: `Null`, `Bool`, `I64`, `String`, `List<serializable>`, `Record{serializable}`, `Error`
 
@@ -578,7 +579,7 @@ flow safe_extractor:
 ## Appendix A: Reserved Keywords
 
 ```
-and, await, backoff, bind, bool, emit, false, flow, fork, get, get?,
+and, await, backoff, bind, bool, debug, emit, false, flow, fork, get, get?,
 genesis, halt, hunt, i64, if, in, join, limit, limits, list, load,
 not, null, omni, or, parallel, pipeline, push, rate, reap, record,
 retry, rule, set, take, text, true, workers

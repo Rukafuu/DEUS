@@ -219,8 +219,9 @@ int deus_validate_program(const DeusProgram *program, char *error, size_t cap) {
             executor_locked = 1; stack[depth - 1u] = TYPE_VALUE;
             break;
         case DEUS_EMIT:
+        case DEUS_DEBUG:
             if (!require_top(stack, depth, TYPE_VALUE, error, cap, pc,
-                             "EMIT requires a serializable value")) return 0;
+                             in.opcode == DEUS_EMIT ? "EMIT requires a serializable value" : "DEBUG requires a serializable value")) return 0;
             depth--;
             break;
         case DEUS_HALT:

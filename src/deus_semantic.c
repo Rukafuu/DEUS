@@ -357,8 +357,8 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
             futures -= operand;
         } else if (opcode == DEUS_REAP) {
             if (!depth || futures) { semantic_error(diagnostic, instruction, "reap requires a resolved document stack"); goto failed; }
-        } else if (opcode == DEUS_EMIT) {
-            if (!depth || futures) { semantic_error(diagnostic, instruction, "emit requires resolved extraction output"); goto failed; }
+        } else if (opcode == DEUS_EMIT || opcode == DEUS_DEBUG) {
+            if (!depth || futures) { semantic_error(diagnostic, instruction, opcode == DEUS_EMIT ? "emit requires resolved extraction output" : "debug requires resolved extraction output"); goto failed; }
             depth--;
         } else if (opcode == DEUS_HALT) {
             if (futures) { semantic_error(diagnostic, instruction, "halt with unresolved futures"); goto failed; }

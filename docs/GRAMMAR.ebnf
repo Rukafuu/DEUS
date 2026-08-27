@@ -33,7 +33,7 @@ instruction_statement  = omni_statement
                        | unsigned_instruction ;
 
 omni_statement         = "omni" , string ;
-simple_instruction     = "genesis" | "await" | "emit" | "halt" ;
+simple_instruction     = "genesis" | "await" | "emit" | "debug" | "halt" ;
 string_instruction     = ( "hunt" | "reap" | "fork" ) , string ;
 unsigned_instruction   = ( "join" | "limit" | "retry" | "backoff" | "rate" ) ,
                          unsigned_integer ;

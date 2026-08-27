@@ -8,7 +8,7 @@ typedef struct { const char *name; uint8_t opcode; DeusAstOperandKind operand; }
 static const InstructionSpec SPECS[] = {
     {"omni", DEUS_OMNI, DEUS_AST_OPERAND_STRING}, {"genesis", DEUS_GENESIS, DEUS_AST_OPERAND_NONE},
     {"hunt", DEUS_HUNT, DEUS_AST_OPERAND_STRING}, {"reap", DEUS_REAP, DEUS_AST_OPERAND_STRING},
-    {"halt", DEUS_HALT, DEUS_AST_OPERAND_NONE}, {"emit", DEUS_EMIT, DEUS_AST_OPERAND_NONE},
+    {"halt", DEUS_HALT, DEUS_AST_OPERAND_NONE}, {"emit", DEUS_EMIT, DEUS_AST_OPERAND_NONE}, {"debug", DEUS_DEBUG, DEUS_AST_OPERAND_NONE},
     {"fork", DEUS_FORK, DEUS_AST_OPERAND_STRING}, {"await", DEUS_AWAIT, DEUS_AST_OPERAND_NONE},
     {"join", DEUS_JOIN, DEUS_AST_OPERAND_U32}, {"limit", DEUS_LIMIT, DEUS_AST_OPERAND_U32},
     {"retry", DEUS_RETRY, DEUS_AST_OPERAND_U32}, {"backoff", DEUS_BACKOFF, DEUS_AST_OPERAND_U32},
