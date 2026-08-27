@@ -2,7 +2,6 @@
 #include "deus_json.h"
 #include "deus_value.h"
 #include <errno.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +40,7 @@ struct HuntTask {
 };
 
 static int fail(const char *message) { fprintf(stderr, "deusvm: %s\n", message); return 1; }
+
 static int checked_i64(uint8_t opcode, int64_t left, int64_t right,
                        int64_t *result, const char **error) {
     switch (opcode) {
@@ -78,6 +78,14 @@ static int checked_i64(uint8_t opcode, int64_t left, int64_t right,
     }
 }
 
+static int file_output_write(void *context, const void *data, size_t length) {
+    return fwrite(data, 1u, length, (FILE *)context) == length;
+}
+
+static int output_write(const DeusOutputSink *output, const void *data,
+                        size_t length) {
+    return !length || output->write(output->context, data, length);
+}
 
 static wchar_t *widen(const char *source) {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
@@ -184,10 +192,8 @@ static char *host_hunt_once(Runtime *rt, const char *url, size_t *out_len,
                             char *error, size_t cap) {
     DeusHostDocument document = {0}; char *copy = NULL;
     if (!rt->host) return native_hunt_once(rt, url, out_len, error, cap);
-    if (rt->host->abi_version != DEUS_HOST_ABI_VERSION ||
-        !(rt->host->capabilities & DEUS_HOST_CAP_NETWORK) || !rt->host->hunt) {
-        snprintf(error, cap, "host does not grant network capability"); return NULL;
-    }
+    if (!deus_host_validate(rt->host, DEUS_HOST_CAP_NETWORK, error, cap))
+        return NULL;
     if (cap) error[0] = '\0';
     if (!rt->host->hunt(rt->host->context, url, strlen(url), &document, error, cap)) {
         if (cap && !error[0]) snprintf(error, cap, "host hunt failed");
@@ -410,11 +416,12 @@ static int value_from_managed(const DeusValue *source, Value *out) {
     return 0;
 }
 
-static int runtime_call_adapter(const Runtime *runtime,const char *name,size_t length,const Value *input,DeusValueContext *context,Value *output,char *error,size_t cap){DeusValue value=deus_value_null(),result=deus_value_null();int ok;if(!runtime->host||runtime->host->abi_version!=DEUS_HOST_ABI_VERSION||!(runtime->host->capabilities&DEUS_HOST_CAP_ADAPTER_CALL)||!runtime->host->call){snprintf(error,cap,"runtime requires DeusHost adapter capability");return 0;}if(!value_as_managed(input,context,&value)){snprintf(error,cap,"adapter input is not serializable");return 0;}ok=runtime->host->call(runtime->host->context,name,length,&value,context,&result,error,cap);deus_value_dispose(&value);if(!ok){if(cap&&!error[0])snprintf(error,cap,"host adapter call failed");deus_value_dispose(&result);return 0;}if(!value_from_managed(&result,output)){snprintf(error,cap,"host adapter returned a non-serializable value");deus_value_dispose(&result);return 0;}deus_value_dispose(&result);return 1;}
 static int url_unreserved(unsigned char byte) {
     return (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
            (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' || byte == '_' || byte == '~';
 }
+
+static int runtime_call_adapter(const Runtime *runtime,const char *name,size_t length,const Value *input,DeusValueContext *context,Value *output,char *error,size_t cap){DeusValue value=deus_value_null(),result=deus_value_null();int ok;if(!runtime->host||runtime->host->abi_version!=DEUS_HOST_ABI_VERSION||!(runtime->host->capabilities&DEUS_HOST_CAP_ADAPTER_CALL)||!runtime->host->call){snprintf(error,cap,"runtime requires DeusHost adapter capability");return 0;}if(!value_as_managed(input,context,&value)){snprintf(error,cap,"adapter input is not serializable");return 0;}ok=runtime->host->call(runtime->host->context,name,length,&value,context,&result,error,cap);deus_value_dispose(&value);if(!ok){if(cap&&!error[0])snprintf(error,cap,"host adapter call failed");deus_value_dispose(&result);return 0;}if(!value_from_managed(&result,output)){snprintf(error,cap,"host adapter returned a non-serializable value");deus_value_dispose(&result);return 0;}deus_value_dispose(&result);return 1;}
 
 static int value_url_encode(Value *value) {
     char scalar[32]; const char *source = value->data; size_t length = value->len;
@@ -437,10 +444,18 @@ static int value_url_encode(Value *value) {
     *value = (Value){V_STRING, encoded, used, NULL, 0}; return 1;
 }
 
-int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
-                                      const DeusHost *host) {
+int deus_vm_execute_program_with_options(const DeusProgram *input,
+                                         const DeusOutputSink *output,
+                                         const DeusHost *host,
+                                         const DeusExecutionOptions *options) {
     DeusProgram p = *input; char error[192];
     if (!deus_validate_program(input, error, sizeof(error))) return fail(error);
+    if (!output || output->abi_version != DEUS_OUTPUT_ABI_VERSION ||
+        !output->write) return fail("invalid output sink");
+    if (!options || options->abi_version != DEUS_EXECUTION_ABI_VERSION ||
+        !options->instruction_limit ||
+        (options->deadline_ms && !options->now_ms))
+        return fail("invalid execution options");
     Runtime rt = {0}; rt.limit = 8; rt.retries = 2; rt.backoff_ms = 100; rt.host = host; InitializeCriticalSection(&rt.rate_lock);
     Value stack[STACK_MAX] = {0}; uint32_t stack_origins[STACK_MAX]; size_t sp = 0; int began = 0, rc = 0;
     Value locals[DEUS_MAX_LOCALS] = {0}; unsigned char local_bound[DEUS_MAX_LOCALS] = {0};
@@ -448,7 +463,19 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
     DeusValueContext *value_context = deus_value_context_create(NULL);
     if (!value_context) { DeleteCriticalSection(&rt.rate_lock); return fail("value context allocation failed"); }
 
+    uint64_t instructions = 0u;
     for (uint32_t pc = 0; pc < p.code_count; pc++) {
+        if (instructions++ >= options->instruction_limit) {
+            rc = fail("instruction budget exhausted"); break;
+        }
+        if (options->should_cancel &&
+            options->should_cancel(options->context)) {
+            rc = fail("execution cancelled"); break;
+        }
+        if (options->deadline_ms &&
+            options->now_ms(options->context) >= options->deadline_ms) {
+            rc = fail("execution deadline exceeded"); break;
+        }
         DeusInstruction in = p.code[pc];
         const char *arg = in.operand < p.string_count ? p.strings[in.operand].data : "";
         size_t arg_length = in.operand < p.string_count ? p.strings[in.operand].len : 0u;
@@ -495,10 +522,9 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             }
             stack[sp] = (Value){0}; stack[sp].kind = V_MANAGED; stack[sp++].managed = managed;
         } else if (in.opcode == DEUS_RECORD_SET || in.opcode == DEUS_LIST_PUSH) {
-            DeusValue item; uint32_t target_local; Value *container, *source;
+            DeusValue item; Value *container, *source;
             if (sp < 2u) { rc = fail("compound mutation requires container and value"); break; }
             container = &stack[sp - 2u]; source = &stack[sp - 1u];
-            target_local = stack_origins[sp - 2u];
             if (container->kind != V_MANAGED ||
                 (in.opcode == DEUS_RECORD_SET && container->managed.kind != DEUS_VALUE_RECORD) ||
                 (in.opcode == DEUS_LIST_PUSH && container->managed.kind != DEUS_VALUE_LIST) ||
@@ -508,30 +534,18 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
                 deus_value_list_append(&container->managed, &item);
             deus_value_dispose(&item);
             if (!changed) { rc = fail(deus_value_context_error(value_context)); break; }
-            if (target_local < DEUS_MAX_LOCALS && local_bound[target_local]) {
-                deus_value_dispose(&locals[target_local].managed);
-                deus_value_move(&locals[target_local].managed, &container->managed);
-            }
             value_dispose(source); value_dispose(container); sp -= 2u;
         } else if (in.opcode == DEUS_RECORD_GET || in.opcode == DEUS_LIST_AT ||
                    in.opcode == DEUS_RECORD_GET_OPTIONAL || in.opcode == DEUS_LIST_AT_OPTIONAL) {
             const DeusValue *found; Value extracted;
             int is_get = in.opcode == DEUS_RECORD_GET || in.opcode == DEUS_RECORD_GET_OPTIONAL;
             int is_optional = in.opcode == DEUS_RECORD_GET_OPTIONAL || in.opcode == DEUS_LIST_AT_OPTIONAL;
-            if (!sp || stack[sp - 1u].kind != V_MANAGED ||
-                (is_get && stack[sp - 1u].managed.kind != DEUS_VALUE_RECORD) ||
-                (!is_get && stack[sp - 1u].managed.kind != DEUS_VALUE_LIST)) {
-                if (is_optional && sp) {
-                    value_dispose(&stack[sp - 1u]);
-                    stack[sp - 1u] = (Value){V_NULL, NULL, 0u, NULL, 0};
-                    continue;
-                }
-                rc = fail(is_get ? "RECORD_GET requires a record" : "LIST_AT requires a list");
-                break;
-            }
+            if (!sp || stack[sp - 1u].kind != V_MANAGED) { rc = fail("structured read requires a managed value"); break; }
             if (is_get) {
+                if (stack[sp - 1u].managed.kind != DEUS_VALUE_RECORD) { rc = fail("RECORD_GET requires a record"); break; }
                 found = deus_value_record_get(&stack[sp - 1u].managed, arg, arg_length);
             } else {
+                if (stack[sp - 1u].managed.kind != DEUS_VALUE_LIST) { rc = fail("LIST_AT requires a list"); break; }
                 found = deus_value_list_at(&stack[sp - 1u].managed, in.operand);
             }
             if (!found && !is_optional) { rc = fail(is_get ? "record field was not found" : "list index is out of bounds"); break; }
@@ -630,8 +644,13 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             url = stack[--sp]; body = runtime_hunt(&rt, url.data, &length, error, sizeof(error)); value_dispose(&url);
             if (!body) { rc = fail(error); break; }
             stack[sp++] = (Value){V_DOCUMENT, body, length, NULL, 0};
-        } else if (in.opcode == DEUS_BIND) {
         } else if (in.opcode == DEUS_HOST_CALL) {
+            Value input, result;
+            if (!began || !sp || in.operand >= p.string_count) { rc = fail("invalid VM state at HOST_CALL"); break; }
+            input = stack[--sp];
+            if (!runtime_call_adapter(&rt, arg, arg_length, &input, value_context, &result, error, sizeof(error))) { value_dispose(&input); rc = fail(error); break; }
+            value_dispose(&input); stack[sp++] = result;
+        } else if (in.opcode == DEUS_BIND) {
             if (!began || !sp || in.operand >= DEUS_MAX_LOCALS || local_bound[in.operand]) { rc = fail("invalid VM state at BIND"); break; }
             locals[in.operand] = stack[--sp]; memset(&stack[sp], 0, sizeof(stack[sp])); local_bound[in.operand] = 1u;
         } else if (in.opcode == DEUS_LOAD) {
@@ -680,18 +699,23 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             else stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0};
             deus_json_scalar_dispose(&scalar);
         } else if (in.opcode == DEUS_EMIT || in.opcode == DEUS_DEBUG) {
-            Value value; FILE *stream = in.opcode == DEUS_EMIT ? output : stderr;
+            Value value; char scalar[32]; int length = 0; int emitted = 0;
             if (!sp) { rc = fail(in.opcode == DEUS_EMIT ? "EMIT expected a value" : "DEBUG expected a value"); break; }
             value = stack[--sp];
-            if (value.kind == V_TEXT || value.kind == V_STRING) fwrite(value.data, 1, value.len, stream);
-            else if (value.kind == V_NULL) fputs("null", stream);
-            else if (value.kind == V_BOOL) fputs(value.scalar ? "true" : "false", stream);
-            else if (value.kind == V_I64) fprintf(stream, "%lld", (long long)value.scalar);
-            else if (value.kind == V_MANAGED) {
-                if (!deus_value_write_json(&value.managed, stream)) { value_dispose(&value); rc = fail(in.opcode == DEUS_EMIT ? "EMIT failed to serialize compound value" : "DEBUG failed to serialize compound value"); break; }
-            }
+            if (in.opcode == DEUS_DEBUG) {
+                if (value.kind == V_TEXT || value.kind == V_STRING) emitted = fwrite(value.data, 1u, value.len, stderr) == value.len;
+                else if (value.kind == V_NULL) emitted = fputs("null", stderr) >= 0;
+                else if (value.kind == V_BOOL) emitted = fputs(value.scalar ? "true" : "false", stderr) >= 0;
+                else if (value.kind == V_I64) emitted = fprintf(stderr, "%lld", (long long)value.scalar) >= 0;
+                else if (value.kind == V_MANAGED) emitted = deus_value_write_json(&value.managed, stderr);
+            } else if (value.kind == V_TEXT || value.kind == V_STRING) emitted = output_write(output, value.data, value.len);
+            else if (value.kind == V_NULL) emitted = output_write(output, "null", 4u);
+            else if (value.kind == V_BOOL) emitted = output_write(output, value.scalar ? "true" : "false", value.scalar ? 4u : 5u);
+            else if (value.kind == V_I64) { length = snprintf(scalar, sizeof(scalar), "%lld", (long long)value.scalar); emitted = length > 0 && output_write(output, scalar, (size_t)length); }
+            else if (value.kind == V_MANAGED) emitted = deus_value_write_json_to(&value.managed, output->write, output->context);
             else { value_dispose(&value); rc = fail(in.opcode == DEUS_EMIT ? "EMIT cannot serialize this value" : "DEBUG cannot serialize this value"); break; }
             value_dispose(&value);
+            if (!emitted) { rc = fail(in.opcode == DEUS_EMIT ? "output sink rejected EMIT" : "DEBUG output failed"); break; }
         } else if (in.opcode == DEUS_HALT) break;
     }
     while (sp) value_dispose(&stack[--sp]);
@@ -705,6 +729,20 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
 
 int deus_vm_execute_program(const DeusProgram *program, FILE *output) {
     return deus_vm_execute_program_with_host(program, output, NULL);
+}
+
+int deus_vm_execute_program_with_sink(const DeusProgram *program,
+                                      const DeusOutputSink *output,
+                                      const DeusHost *host) {
+    DeusExecutionOptions options = deus_execution_options_default();
+    return deus_vm_execute_program_with_options(program, output, host, &options);
+}
+
+int deus_vm_execute_program_with_host(const DeusProgram *program, FILE *output,
+                                      const DeusHost *host) {
+    DeusOutputSink sink = {DEUS_OUTPUT_ABI_VERSION, output, file_output_write};
+    if (!output) return fail("output stream is required");
+    return deus_vm_execute_program_with_sink(program, &sink, host);
 }
 
 #ifndef DEUS_VM_NO_MAIN

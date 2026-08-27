@@ -178,6 +178,24 @@ static int test_typed_expressions(void) {
                  "converted dynamic arithmetic compilation")) return 0;
     deus_program_free(&program); return 1;
 }
+static int test_dynamic_scalar_narrowing(void) {
+    const char *ordering = "genesis\nbind page = hunt \"https://example.test\"\nbind score = json page \"$.score\"\nbind eligible = score >= 80\nhalt\n";
+    const char *boolean = "genesis\nbind page = hunt \"https://example.test\"\nbind verified = json page \"$.verified\"\nbind eligible = not verified\nhalt\n";
+    const char *narrowed = "genesis\nbind page = hunt \"https://example.test\"\nbind score = json page \"$.score\"\nbind verified = json page \"$.verified\"\nbind eligible = bool(verified) and i64(score) >= 80\nhalt\n";
+    DeusProgram program; DeusDiagnostic diagnostic = {0};
+    if (!require(!deus_parse_source(ordering, strlen(ordering), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "I64") != NULL && diagnostic.line == 4u,
+                 "dynamic scalar ordering requires i64 narrowing")) return 0;
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    if (!require(!deus_parse_source(boolean, strlen(boolean), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "Bool") != NULL && diagnostic.line == 4u,
+                 "dynamic scalar boolean requires bool narrowing")) return 0;
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    if (!require(deus_parse_source(narrowed, strlen(narrowed), &program, &diagnostic),
+                 "explicitly narrowed dynamic scalars compile")) return 0;
+    deus_program_free(&program);
+    return 1;
+}
 static int test_url_templates(void) {
     const char *source = "genesis\nbind query = \"frieren white\"\nbind year = 2023\nbind page = hunt \"https://example.test/search?q={query}&year={year}\"\nhalt\n";
     const char *unknown = "genesis\nbind page = hunt \"https://example.test/{missing}\"\nhalt\n";
@@ -196,6 +214,19 @@ static int test_url_templates(void) {
                    strstr(diagnostic.message, "String, I64, or Bool") != NULL, "document URL placeholder rejection");
 }
 
+
+static int test_emit_serialization(void) {
+    const char *document =
+        "genesis\n"
+        "bind page = hunt \"https://example.test\"\n"
+        "load page\n"
+        "emit\n"
+        "halt\n";
+    DeusProgram program; DeusDiagnostic diagnostic = {0};
+    return require(!deus_parse_source(document, strlen(document), &program, &diagnostic) &&
+                   strstr(diagnostic.message, "serializable value") != NULL && diagnostic.line == 4u,
+                   "Document emit rejection");
+}
 static int test_structured_reads(void) {
     const char *source = "genesis\nbind item = {\"title\": \"Frieren\", \"meta\": {\"score\": 95}}\nbind items = [item, null]\nbind first = at items 0\nbind direct_title = item.title\nbind direct_score = item.meta.score\nbind direct_first = items[0]\nbind copied = get first \"title\"\nbind missing = get? first \"subtitle\"\nbind absent = at? items 99\nhalt\n";
     const char *wrong = "genesis\nbind title = \"Frieren\"\nbind copied = get title \"name\"\nhalt\n";
@@ -242,5 +273,5 @@ static int test_indented_flow(void) {
 }
 
 int main(void) { return test_lexer() && test_expression_lexer() && test_expression_ast() && test_grammar_surface() && test_ast() && test_diagnostic() && test_locals() &&
-                       test_operational_expressions() && test_typed_expressions() && test_url_templates() &&
-                       test_structured_reads() && test_indented_flow() ? 0 : 1; }
+                       test_operational_expressions() && test_typed_expressions() && test_dynamic_scalar_narrowing() && test_url_templates() &&
+                       test_emit_serialization() && test_structured_reads() && test_indented_flow() ? 0 : 1; }

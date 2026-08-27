@@ -262,10 +262,11 @@ DEUS is an open source project with maintainer-led governance. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines,
 [SUPPORT.md](SUPPORT.md) for official support through GitHub Issues, and
 [GOVERNANCE.md](GOVERNANCE.md) for project decision-making.
+The official project site is [deuslang.org](https://deuslang.org).
 
 Security reports should follow [SECURITY.md](SECURITY.md) rather than a public
 issue. Release planning and announcements are tracked through GitHub Issues.
-The project maintainer is [reskyume](https://github.com/reskyume), with updates
+The project maintainer is [Rukafuu](https://github.com/Rukafuu), with updates
 at [GitHub](https://github.com/rukafuu) and
 [LinkedIn](https://linkedin.com/in/rukafuu).
 

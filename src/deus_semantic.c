@@ -6,6 +6,7 @@
 
 typedef enum { LOCAL_NULL, LOCAL_BOOL, LOCAL_I64, LOCAL_STRING, LOCAL_DOCUMENT,
                LOCAL_SCALAR, LOCAL_RECORD, LOCAL_LIST, LOCAL_VALUE } LocalType;
+enum { SEMANTIC_STACK_MAX = 1024u };
 typedef struct { const char *name; uint32_t length; LocalType type; } LocalSymbol;
 
 static int type_is_serializable(LocalType type) {
@@ -224,7 +225,8 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                               DeusDiagnostic *diagnostic) {
     LocalSymbol locals[DEUS_MAX_LOCALS] = {{0}}; uint32_t local_count = 0u;
     int genesis = 0, began = 0, halted = 0, executor_locked = 0;
-    uint32_t depth = 0u, futures = 0u; LocalType stack_types[DEUS_MAX_LOCALS] = {0};
+    uint32_t depth = 0u, futures = 0u;
+    LocalType stack_types[SEMANTIC_STACK_MAX] = {0};
     const DeusAstInstruction *current_instruction = NULL;
     memset(out, 0, sizeof(*out));
     for (uint32_t index = 0; index < ast->count; index++) {
@@ -368,6 +370,7 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
                 if (locals[slot].length == instruction->symbol_length &&
                     !memcmp(locals[slot].name, instruction->symbol, instruction->symbol_length)) break;
             if (slot == local_count) { semantic_error(diagnostic, instruction, "unknown local"); goto failed; }
+            if (depth == SEMANTIC_STACK_MAX) { semantic_error(diagnostic, instruction, "stack overflow"); goto failed; }
             if (!add_code(out, DEUS_LOAD, slot)) goto memory_failed;
             stack_types[depth++] = locals[slot].type; continue;
         }
@@ -383,13 +386,19 @@ int deus_analyze_and_generate(const DeusAstProgram *ast, DeusProgram *out,
             if (opcode == DEUS_RETRY && operand > 16u) { semantic_error(diagnostic, instruction, "retry must be at most 16"); goto failed; }
             if (opcode == DEUS_BACKOFF && operand > 60000u) { semantic_error(diagnostic, instruction, "backoff must be at most 60000 ms"); goto failed; }
             if (opcode == DEUS_RATE && operand > 10000u) { semantic_error(diagnostic, instruction, "rate must be at most 10000 rps"); goto failed; }
-        } else if (opcode == DEUS_HUNT) { executor_locked = 1; stack_types[depth++] = LOCAL_DOCUMENT; }
-        else if (opcode == DEUS_FORK) { executor_locked = 1; stack_types[depth++] = LOCAL_VALUE; futures++; }
+        } else if (opcode == DEUS_HUNT) {
+            if (depth == SEMANTIC_STACK_MAX) { semantic_error(diagnostic, instruction, "stack overflow"); goto failed; }
+            executor_locked = 1; stack_types[depth++] = LOCAL_DOCUMENT;
+        } else if (opcode == DEUS_FORK) {
+            if (depth == SEMANTIC_STACK_MAX) { semantic_error(diagnostic, instruction, "stack overflow"); goto failed; }
+            executor_locked = 1; stack_types[depth++] = LOCAL_VALUE; futures++;
+        }
         else if (opcode == DEUS_AWAIT) {
             if (!depth || !futures) { semantic_error(diagnostic, instruction, "await requires a future on stack"); goto failed; }
             futures--; stack_types[depth - 1u] = LOCAL_DOCUMENT;
         } else if (opcode == DEUS_JOIN) {
             if (operand == 0u || operand > futures || operand > depth) { semantic_error(diagnostic, instruction, "join exceeds pending futures"); goto failed; }
+            for (uint32_t join_index = depth - operand; join_index < depth; join_index++) stack_types[join_index] = LOCAL_DOCUMENT;
             futures -= operand;
         } else if (opcode == DEUS_REAP) {
             if (!depth || futures || stack_types[depth - 1u] != LOCAL_DOCUMENT) { semantic_error(diagnostic, instruction, "reap requires a resolved Document stack"); goto failed; }

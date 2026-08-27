@@ -28,7 +28,7 @@ pass.
 4. Update documentation when public behavior or language rules change.
 5. Open a pull request with the relevant context.
 
-The current project maintainer is [reskyume](https://github.com/reskyume).
+The current project maintainer is [Rukafuu](https://github.com/Rukafuu).
 
 Avoid unrelated refactors and feature dumping. Changes to grammar, syntax,
 semantics, bytecode, ABI, VM behavior, or host capabilities need architectural

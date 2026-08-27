@@ -1,4 +1,3 @@
-```
 # Compiled and build artifacts
 *.o
 *.obj
@@ -7,44 +6,47 @@
 *.so
 *.dll
 *.exe
+*.deusb
 
-# Dependencies
+# Build and generated project artifacts
+build/
+build-*/
+dist/
+target/
+website/target/
+deus_project_test_tmp/
+
+# Dependencies and runtimes
 node_modules/
 venv/
 .venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
-dist/
-build/
-target/
 .gradle/
 
-# Logs and temp files
+# Logs and temporary files
 *.log
 *.tmp
 *.swp
 *.swo
 
-# Environment
+# Local environment and editors
 .env
 .env.local
 *.env.*
-
-# Editors
 .vscode/
 .idea/
+editors/vscode/
 
-# System files
+# System and coverage files
 .DS_Store
 Thumbs.db
-
-# Coverage
 coverage/
 htmlcov/
 .coverage
 
-# Compressed files
+# Archives
 *.zip
 *.gz
 *.tar
@@ -63,4 +65,3 @@ htmlcov/
 *.Z
 *.lz
 *.lzo
-```
