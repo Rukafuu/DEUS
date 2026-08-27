@@ -31,8 +31,14 @@ static int expect_rejection(const char *name, const DeusHost *host,
 }
 
 int main(void) {
-    DeusHost valid = {DEUS_HOST_ABI_VERSION, DEUS_HOST_CAP_NETWORK,
-                      NULL, mock_hunt, NULL};
+    DeusHost valid = {
+        .abi_version = DEUS_HOST_ABI_VERSION,
+        .capabilities = DEUS_HOST_CAP_NETWORK,
+        .context = NULL,
+        .hunt = mock_hunt,
+        .release_document = NULL,
+        .call = NULL,
+    };
     DeusHost wrong_version = valid;
     DeusHost missing_callback = valid;
     DeusHost unknown_capability = valid;
@@ -50,7 +56,7 @@ int main(void) {
     if (!expect_rejection("null", NULL, 0u, "host is required") ||
         !expect_rejection("version", &wrong_version, 0u,
                           "unsupported host ABI version") ||
-        !expect_rejection("grant", &valid, UINT64_C(1) << 1,
+        !expect_rejection("grant", &valid, UINT64_C(1) << 63,
                           "runtime requires unknown capabilities") ||
         !expect_rejection("callback", &missing_callback, 0u,
                           "requires a hunt callback") ||

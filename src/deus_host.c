@@ -9,7 +9,8 @@ static int reject(char *error, size_t error_cap, const char *message) {
 
 int deus_host_validate(const DeusHost *host, uint64_t required_capabilities,
                        char *error, size_t error_cap) {
-    const uint64_t known_capabilities = DEUS_HOST_CAP_NETWORK;
+    const uint64_t known_capabilities =
+        DEUS_HOST_CAP_NETWORK | DEUS_HOST_CAP_ADAPTER_CALL;
 
     if (error && error_cap) error[0] = '\0';
     if (!host) return reject(error, error_cap, "host is required");
@@ -24,5 +25,8 @@ int deus_host_validate(const DeusHost *host, uint64_t required_capabilities,
     if ((host->capabilities & DEUS_HOST_CAP_NETWORK) && !host->hunt)
         return reject(error, error_cap,
                       "network capability requires a hunt callback");
+    if ((host->capabilities & DEUS_HOST_CAP_ADAPTER_CALL) && !host->call)
+        return reject(error, error_cap,
+                      "adapter call capability requires a call callback");
     return 1;
 }
