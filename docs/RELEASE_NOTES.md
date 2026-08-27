@@ -7,6 +7,10 @@
 - Boolean and ordering operators now require statically known Bool and I64 values. Convert adapter or JSON values explicitly before using them in logic.
 - `emit` and `debug` reject known `Document` values during compilation.
 
+### Structured access syntax
+
+- Records and lists can now be read inside pure expressions as `record.field` and `list[0]` (including chains). These are aliases for the existing mandatory `get` and `at` operations.
+
 ### Checked I64 arithmetic
 
 - `+`, `-`, `*`, `/`, and `%` compile only for statically known I64 operands.

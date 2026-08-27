@@ -197,8 +197,10 @@ static int test_url_templates(void) {
 }
 
 static int test_structured_reads(void) {
-    const char *source = "genesis\nbind item = {\"title\": \"Frieren\", \"meta\": {\"score\": 95}}\nbind items = [item, null]\nbind first = at items 0\nbind copied = get first \"title\"\nbind missing = get? first \"subtitle\"\nbind absent = at? items 99\nhalt\n";
+    const char *source = "genesis\nbind item = {\"title\": \"Frieren\", \"meta\": {\"score\": 95}}\nbind items = [item, null]\nbind first = at items 0\nbind direct_title = item.title\nbind direct_score = item.meta.score\nbind direct_first = items[0]\nbind copied = get first \"title\"\nbind missing = get? first \"subtitle\"\nbind absent = at? items 99\nhalt\n";
     const char *wrong = "genesis\nbind title = \"Frieren\"\nbind copied = get title \"name\"\nhalt\n";
+    const char *member_wrong = "genesis\nbind title = \"Frieren\"\nbind copied = title.name\nhalt\n";
+    const char *index_wrong = "genesis\nbind items = [1]\nbind copied = items[-1]\nhalt\n";
     DeusProgram program; DeusDiagnostic diagnostic = {0}; int get = 0, at = 0, optional = 0, records = 0, scalar_constants = 0;
     if (!require(deus_parse_source(source, strlen(source), &program, &diagnostic), "structured read compilation")) return 0;
     for (uint32_t index = 0; index < program.code_count; index++) {
@@ -211,10 +213,14 @@ static int test_structured_reads(void) {
             program.code[index].opcode == DEUS_CONST_NULL) scalar_constants++;
     }
     deus_program_free(&program);
-    if (!require(get == 1 && at == 1 && optional == 2 && records == 2 && scalar_constants == 3,
+    if (!require(get == 4 && at == 2 && optional == 2 && records == 2 && scalar_constants == 3,
                  "nested structured literal and read lowering")) return 0;
-    return require(!deus_parse_source(wrong, strlen(wrong), &program, &diagnostic) &&
-                   strstr(diagnostic.message, "Record") != NULL, "structured source type rejection");
+    if (!require(!deus_parse_source(wrong, strlen(wrong), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "Record") != NULL, "legacy structured source type rejection")) return 0;
+    if (!require(!deus_parse_source(member_wrong, strlen(member_wrong), &program, &diagnostic) &&
+                 strstr(diagnostic.message, "member access requires Record") != NULL, "member access type rejection")) return 0;
+    return require(!deus_parse_source(index_wrong, strlen(index_wrong), &program, &diagnostic) &&
+                   strstr(diagnostic.message, "unsigned integer literal") != NULL, "item access index rejection");
 }
 
 static int test_indented_flow(void) {

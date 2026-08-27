@@ -182,6 +182,7 @@ JSON extracted from a Document is dynamic. Hosts may preflight known scalar shap
 - At: `bind item = at list index` (errors if out of bounds)
 - At?: `bind item = at? list index` (returns `Null` if out of bounds)
 - Pure expressions: `bind result = a + b * 2`
+- Structured expression reads: `bind title = item.title`, `bind first = items[0]`. They are mandatory reads; a missing field, wrong kind, or out-of-range index fails at runtime. Indexes use unsigned integer literals in this language version.
 
 ### 5.2.1 Host Adapter Calls
 
@@ -503,16 +504,13 @@ Key opcodes:
 
 The following features require dedicated RFCs before implementation:
 
-1. **Arithmetic expressions** (`+`, `-`, `*`, `/`, `%`; proposed in [RFC-0002](RFC-0002-CHECKED-I64-ARITHMETIC.md))
-2. **Member access syntax** (`record.field`)
-3. **Item access syntax** (`list[index]`)
-4. **Pipeline construct** (`pipeline items as item: filter ... rank ... take`)
-5. **Parallel blocks** (`parallel:` for concurrent constant-URL hunts)
-6. **Rules** (`rule name(subject): expression`)
-7. **Provenance schema** (explicit authenticated metadata)
-8. **Typed collections** (`List<T>`, `Record{field: Type}`)
-9. **Collection iteration** (bounded, budgeted)
-10. **Stable sorting** (for deterministic ranking)
+1. **Pipeline construct** (`pipeline items as item: filter ... rank ... take`)
+2. **Parallel blocks** (`parallel:` for concurrent constant-URL hunts)
+3. **Rules** (`rule name(subject): expression`)
+4. **Provenance schema** (explicit authenticated metadata)
+5. **Typed collections** (`List<T>`, `Record{field: Type}`)
+6. **Collection iteration** (bounded, budgeted)
+7. **Stable sorting** (for deterministic ranking)
 
 ## 12. Examples
 

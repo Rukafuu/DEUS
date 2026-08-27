@@ -140,6 +140,32 @@ static int compile_expression(const DeusExpressionNode *expression, const LocalS
             snprintf(diagnostic->message, sizeof(diagnostic->message), "unknown local in expression"); return 0; }
         *type = locals[slot].type; return add_code(out, DEUS_LOAD, slot);
     }
+    if (expression->kind == DEUS_EXPRESSION_MEMBER_ACCESS) {
+        if (!compile_expression(expression->object, locals, local_count, out, &left_type, diagnostic)) return 0;
+        if (left_type != LOCAL_RECORD && left_type != LOCAL_VALUE) {
+            diagnostic->line = expression->line; diagnostic->column = expression->column;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "member access requires Record or Value"); return 0;
+        }
+        if (!intern_string(out, expression->symbol, expression->symbol_length, &operand) ||
+            !add_code(out, DEUS_RECORD_GET, operand)) return 0;
+        *type = LOCAL_VALUE; return 1;
+    }
+    if (expression->kind == DEUS_EXPRESSION_ITEM_ACCESS) {
+        if (expression->accessor->kind != DEUS_EXPRESSION_LITERAL ||
+            expression->accessor->literal_kind != DEUS_AST_EXPRESSION_I64 ||
+            expression->accessor->literal.integer < 0 ||
+            (uint64_t)expression->accessor->literal.integer > UINT32_MAX) {
+            diagnostic->line = expression->accessor->line; diagnostic->column = expression->accessor->column;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "item access requires an unsigned integer literal index"); return 0;
+        }
+        if (!compile_expression(expression->object, locals, local_count, out, &left_type, diagnostic)) return 0;
+        if (left_type != LOCAL_LIST && left_type != LOCAL_VALUE) {
+            diagnostic->line = expression->line; diagnostic->column = expression->column;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "item access requires List or Value"); return 0;
+        }
+        if (!add_code(out, DEUS_LIST_AT, (uint32_t)expression->accessor->literal.integer)) return 0;
+        *type = LOCAL_VALUE; return 1;
+    }
     if (!compile_expression(expression->left, locals, local_count, out, &left_type, diagnostic)) return 0;
     if (expression->kind == DEUS_EXPRESSION_UNARY) {
         if (left_type != LOCAL_BOOL) {

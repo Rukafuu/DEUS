@@ -78,9 +78,15 @@ logical_and_expression = equality_expression ,
                          { "and" , equality_expression } ;
 equality_expression    = comparison_expression ,
                          { equality_operator , comparison_expression } ;
-comparison_expression  = unary_expression ,
-                         { comparison_operator , unary_expression } ;
-unary_expression       = "not" , unary_expression | primary_expression ;
+comparison_expression  = additive_expression ,
+                         { comparison_operator , additive_expression } ;
+additive_expression    = multiplicative_expression ,
+                         { ( "+" | "-" ) , multiplicative_expression } ;
+multiplicative_expression = unary_expression ,
+                         { ( "*" | "/" | "%" ) , unary_expression } ;
+unary_expression       = "not" , unary_expression | postfix_expression ;
+postfix_expression     = primary_expression ,
+                         { "." , identifier | "[" , unsigned_integer , "]" } ;
 primary_expression     = literal
                        | local_name
                        | conversion
