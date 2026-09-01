@@ -127,16 +127,16 @@ limits for nesting depth, items, fields, and blobs. Composite values reject cycl
 and cross-context references, preventing refcount cycles and ambiguous lifetimes.
 The context must live until all of its values are discarded.
 
-This module does not change the ABI v1 or add opcodes. The existing VM remains
-compatible while the new AST and semantic analysis pipeline is introduced in later
-increments.
+The current release uses bytecode ABI v4 and Host ABI v2. These contracts are
+versioned independently; see [`docs/BYTECODE.md`](docs/BYTECODE.md) and
+[`docs/HOST_ABI.md`](docs/HOST_ABI.md) for the authoritative definitions.
 
 ## Compiler pipeline
 
 `deus_parse_source` is a compatibility facade over independent stages:
 
 ```text
-source → lexer → parser → AST → semantic analysis → ABI v1 bytecode generation
+source → lexer → parser → AST → semantic analysis → ABI v4 bytecode generation
 ```
 
 Tokens carry line and column information; AST nodes have typed operands and their own
@@ -144,7 +144,7 @@ string ownership. Stack effect analysis, executor limits, and interning happen o
 after parsing. Unknown instructions may include a short suggestion without altering
 the diagnostic format consumed by the CLI.
 
-## Binary alphabet — ABI v1
+## Binary alphabet — ABI v4
 
 | Byte | Mnemonic | Operand | Stack effect |
 | --- | --- | --- | --- |
@@ -186,10 +186,12 @@ All integers use little-endian encoding. The fixed header is:
 Each string is `u32 length + UTF-8 bytes`. The VM validates the magic, ABI, offsets,
 limits, CRC32, opcodes, and indices before execution begins.
 
-`CONST`, `BIND`, `LOAD`, and the scalar constants are additive ABI v1 instructions. Current readers
-still accept every earlier v1 program. Programs may define at most 256 locals;
-`BIND` transfers ownership and `LOAD` creates an independent copy. Uninitialized
-slots and rebinding are rejected.
+The table above shows the original opcode prefix. ABI v4 extends it through
+`0x33` with structured values, comparisons, conversions, host calls,
+diagnostics, and checked I64 arithmetic. The complete frozen opcode table and
+compatibility rules live in [`docs/BYTECODE.md`](docs/BYTECODE.md). Programs may
+define at most 256 locals; `BIND` transfers ownership and `LOAD` creates an
+independent copy. Uninitialized slots and rebinding are rejected.
 
 ## Syntax
 
@@ -225,7 +227,7 @@ Names have program scope, cannot be redeclared, and may only be used after
 `genesis`. `EMIT` writes scalars as UTF-8 text. HTTP expressions, interpolation,
 lists, and records will build on the same typed AST.
 
-Comments begin with `#` or `//`. ABI v1 accepts simple tag selectors,
+Comments begin with `#` or `//`. DEUS accepts simple tag selectors,
 `.class`, and `#id`. The linter requires exactly one `genesis`, one terminal
 `halt`, and validates stack effects, pending futures, numeric limits, and the
 position of executor settings. `LIMIT`, `RETRY`, `BACKOFF`, and `RATE` must appear

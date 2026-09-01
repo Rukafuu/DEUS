@@ -1,56 +1,54 @@
-# DEUS Host ABI v1
+# DEUS Host ABI v2
 
 The host ABI is the boundary between the bounded DEUS VM and an embedding
-application such as The Truth. It is versioned independently from the DEUSB
-bytecode ABI.
+application. It is versioned independently from the DEUSB bytecode ABI.
 
 ## Current contract
 
-An embedder supplies a `DeusHost` to
-`deus_vm_execute_program_with_host`. Before loading programs, it can validate
-that host with `deus_host_validate`.
+An embedder supplies a `DeusHost` to `deus_vm_execute_program_with_host`. Before
+loading programs, it can validate that host with `deus_host_validate`.
 
-Host ABI v1 currently grants one authority:
+Host ABI v2 defines two explicit capability families:
 
 - `DEUS_HOST_CAP_NETWORK`: permits `HUNT`, `FORK`, and `HUNT_VALUE` through the
-  host's `hunt` callback.
+  host's `hunt` callback;
+- `DEUS_HOST_CAP_ADAPTER_CALL`: permits `call "adapter.operation"` through the
+  host's `call` callback.
 
-The module named by `OMNI` does not grant authority. The capability bit must be
-present and a `hunt` callback must be supplied.
+Naming a module or adapter does not grant authority. The matching capability
+bit and callback must both be present. Adapter hosts remain responsible for
+input validation, budgets, authentication, allowlists, and the authority of
+any filesystem, network, model, or database integration.
 
 ## Ownership
 
 On a successful `hunt`, the host returns a borrowed `DeusHostDocument`. The VM
 copies its bytes within the 32 MiB response limit. When `release_document` is
-present, the VM invokes it exactly once after inspecting or copying a successful
-document. The host owns cleanup when `hunt` reports failure.
+present, the VM invokes it exactly once after inspecting or copying a
+successful document. The host owns cleanup when `hunt` reports failure.
 
-Callbacks used by concurrent retrieval must be thread-safe. The `context`
-pointer remains owned by the embedder and must outlive the execution.
+The adapter `call` callback receives borrowed input and a `DeusValueContext` for
+its output. The VM copies the returned serializable value into its runtime
+representation and disposes the managed result. Contexts and callback state
+must outlive the execution that uses them.
+
+Callbacks used by concurrent retrieval must be thread-safe.
 
 ## Compatibility rules
 
 - `abi_version` must equal `DEUS_HOST_ABI_VERSION`.
 - Unknown capability bits are rejected by the current runtime.
-- Adding fields to `DeusHost` is not compatible with Host ABI v1.
-- New capability families require a new versioned interface or Host ABI v2;
-  they must not be appended casually to the v1 struct.
-- The bytecode ABI may remain v1 while the host ABI evolves independently.
-
-## The Truth integration boundary
-
-The first The Truth adapter should embed `deuscore` and `deusvmcore`, construct a
-validated Host ABI v1 instance, and execute a fixed retrieval program against a
-deterministic mock or local source. Index writes, embeddings, ranking, storage,
-cancellation, deadlines, and structured output are not part of Host ABI v1 and
-must receive explicit contracts before implementation.
+- A capability bit without its required callback is rejected.
+- Adding or reordering fields in `DeusHost` requires a new Host ABI version.
+- The bytecode ABI evolves independently; DEUS v0.4.0 uses bytecode ABI v4 and
+  Host ABI v2.
 
 ## Embeddable output
 
 `deus_vm_execute_program_with_sink` accepts a separately versioned
-`DeusOutputSink`. Each `EMIT` forwards UTF-8 or compact JSON bytes to its `write`
-callback. Returning zero stops execution with failure. The callback is borrowed
-for the duration of the call and the embedder owns its context.
+`DeusOutputSink`. Each `EMIT` forwards UTF-8 or compact JSON bytes to its
+`write` callback. Returning zero stops execution with failure. The callback is
+borrowed for the duration of the call and the embedder owns its context.
 
 The existing `deus_vm_execute_program` and
 `deus_vm_execute_program_with_host` functions remain compatibility wrappers
@@ -66,5 +64,7 @@ callback, and set an absolute deadline in the units returned by its monotonic
 
 Controls are checked before every instruction. They do not preempt a host
 callback that is already blocked; hosts must enforce their own transport
-timeouts today. Propagating cancellation into active futures and host effects
-remains part of the later structured execution contract.
+timeouts.
+
+See [`HOST_SDK.md`](HOST_SDK.md) for an embedding example and operational
+guidance.
