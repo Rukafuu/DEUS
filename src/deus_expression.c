@@ -28,7 +28,8 @@ static DeusExpressionNode *primary(ExpressionParser *parser) {
     DeusExpressionNode *result;
     if (++parser->depth > 64u) { snprintf(parser->diagnostic->message, sizeof(parser->diagnostic->message), "expression exceeds 64 levels"); return NULL; }
     if (parser->token.kind == DEUS_TOKEN_LPAREN) {
-        if (!next(parser)) return NULL; result = parse_coalesce(parser);
+        if (!next(parser)) return NULL;
+        result = parse_coalesce(parser);
         if (!result || parser->token.kind != DEUS_TOKEN_RPAREN) { deus_expression_free(result); snprintf(parser->diagnostic->message, sizeof(parser->diagnostic->message), "expected ')'"); return NULL; }
         if (!next(parser)) { deus_expression_free(result); return NULL; }
     } else if (word(&parser->token, "text") || word(&parser->token, "i64") || word(&parser->token, "bool")) {

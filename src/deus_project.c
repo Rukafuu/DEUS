@@ -18,6 +18,12 @@
 #else
 #include <unistd.h>
 #define DEUS_SEP '/'
+#ifndef S_IFDIR
+#define S_IFDIR 0040000
+#endif
+#ifndef S_IFREG
+#define S_IFREG 0100000
+#endif
 #endif
 
 static void set_error(char *error, size_t size, const char *format, ...) {

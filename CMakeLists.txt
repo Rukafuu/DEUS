@@ -25,7 +25,8 @@ add_library(deuscore STATIC
   src/deus_parser.c
   src/deus_semantic.c
   src/deus_source.c
-  src/deus_value.c)
+  src/deus_value.c
+  src/deus_type.c)
 target_include_directories(deuscore PUBLIC include)
 target_include_directories(deuscore PRIVATE src)
 
@@ -69,7 +70,10 @@ if(WIN32)
   target_compile_definitions(deusvm PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
   target_link_libraries(deusvm PRIVATE winhttp)
 else()
-  message(FATAL_ERROR "DEUS VM v1 uses native WinHTTP and currently targets Windows")
+  # Non-Windows build: disable WinHTTP-dependent features
+  target_compile_definitions(deusvmcore PRIVATE DEUS_VM_NO_WINHTTP)
+  target_compile_definitions(deus PRIVATE DEUS_VM_NO_WINHTTP)
+  target_compile_definitions(deusvm PRIVATE DEUS_VM_NO_WINHTTP)
 endif()
 
 enable_testing()
