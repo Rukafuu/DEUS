@@ -379,28 +379,28 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             if (!began || sp == STACK_MAX) { rc = fail("invalid VM state at HUNT"); break; }
             size_t len; char *body = runtime_hunt(&rt, arg, &len, error, sizeof(error));
             if (!body) { rc = fail(error); break; }
-            stack[sp++] = (Value){V_DOCUMENT, body, len, NULL};
+            stack[sp++] = (Value){V_DOCUMENT, body, len, NULL, 0, {0}};
         } else if (in.opcode == DEUS_FORK) {
             if (!began || sp == STACK_MAX) { rc = fail("invalid VM state at FORK"); break; }
             HuntTask *task = task_submit(&rt, arg, error, sizeof(error));
             if (!task) { rc = fail(error); break; }
-            stack[sp++] = (Value){V_FUTURE, NULL, 0, task};
+            stack[sp++] = (Value){V_FUTURE, NULL, 0, task, 0, {0}};
         } else if (in.opcode == DEUS_CONST) {
             char *copy;
             if (!began || sp == STACK_MAX || in.operand >= p.string_count) { rc = fail("invalid VM state at CONST"); break; }
             copy = (char *)malloc(arg_length + 1u);
             if (!copy) { rc = fail("CONST allocation failed"); break; }
             if (arg_length) memcpy(copy, arg, arg_length); copy[arg_length] = '\0';
-            stack[sp++] = (Value){V_STRING, copy, arg_length, NULL};
+            stack[sp++] = (Value){V_STRING, copy, arg_length, NULL, 0, {0}};
         } else if (in.opcode == DEUS_CONST_NULL) {
             if (!began || sp == STACK_MAX) { rc = fail("invalid VM state at CONST_NULL"); break; }
-            stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0};
+            stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0, {0}};
         } else if (in.opcode == DEUS_CONST_BOOL) {
             if (!began || sp == STACK_MAX || in.operand > 1u) { rc = fail("invalid VM state at CONST_BOOL"); break; }
-            stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, in.operand ? 1 : 0};
+            stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, in.operand ? 1 : 0, {0}};
         } else if (in.opcode == DEUS_CONST_I64) {
             if (!began || sp == STACK_MAX) { rc = fail("invalid VM state at CONST_I64"); break; }
-            stack[sp++] = (Value){V_I64, NULL, 0u, NULL, in.immediate};
+            stack[sp++] = (Value){V_I64, NULL, 0u, NULL, in.immediate, {0}};
         } else if (in.opcode == DEUS_CONST_RECORD || in.opcode == DEUS_CONST_LIST) {
             DeusValue managed;
             if (!began || sp == STACK_MAX ||
@@ -468,7 +468,7 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
                 else if (equal && left.kind != V_NULL) equal = 0;
                 result = in.opcode == DEUS_EQUAL ? equal : !equal;
             }
-            value_dispose(&left); value_dispose(&right); stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, result};
+            value_dispose(&left); value_dispose(&right); stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, result, {0}};
         } else if (in.opcode == DEUS_TO_TEXT || in.opcode == DEUS_TO_I64 || in.opcode == DEUS_TO_BOOL) {
             Value *value; char buffer[32]; char *end = NULL; long long number;
             if (!sp) { rc = fail("conversion requires a value"); break; } value = &stack[sp - 1u];
@@ -509,7 +509,7 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             if (right->len) memcpy(joined + left->len, right->data, right->len);
             joined[left->len + right->len] = '\0'; size_t joined_length = left->len + right->len;
             value_dispose(right); value_dispose(left); sp -= 2u;
-            stack[sp++] = (Value){V_STRING, joined, joined_length, NULL, 0};
+            stack[sp++] = (Value){V_STRING, joined, joined_length, NULL, 0, {0}};
         } else if (in.opcode == DEUS_HUNT_VALUE) {
             Value url; size_t length; char *body;
             if (!began || !sp || (stack[sp - 1u].kind != V_STRING && stack[sp - 1u].kind != V_TEXT)) {
@@ -517,7 +517,7 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             }
             url = stack[--sp]; body = runtime_hunt(&rt, url.data, &length, error, sizeof(error)); value_dispose(&url);
             if (!body) { rc = fail(error); break; }
-            stack[sp++] = (Value){V_DOCUMENT, body, length, NULL, 0};
+            stack[sp++] = (Value){V_DOCUMENT, body, length, NULL, 0, {0}};
         } else if (in.opcode == DEUS_BIND) {
             if (!began || !sp || in.operand >= DEUS_MAX_LOCALS || local_bound[in.operand]) { rc = fail("invalid VM state at BIND"); break; }
             locals[in.operand] = stack[--sp]; memset(&stack[sp], 0, sizeof(stack[sp])); local_bound[in.operand] = 1u;
@@ -545,7 +545,7 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             if (!sp || stack[sp - 1].kind != V_DOCUMENT) { rc = fail("REAP expected document"); break; }
             Value old = stack[--sp]; size_t len; char *text = reap(old.data, old.len, arg, &len); free(old.data);
             if (!text) { rc = fail("REAP allocation failed"); break; }
-            stack[sp++] = (Value){V_TEXT, text, len, NULL};
+            stack[sp++] = (Value){V_TEXT, text, len, NULL, 0, {0}};
         } else if (in.opcode == DEUS_JSON_PATH) {
             DeusJsonScalar scalar; Value old;
             if (!sp || stack[sp - 1u].kind != V_DOCUMENT || in.operand >= p.string_count) {
@@ -557,13 +557,13 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             }
             value_dispose(&old);
             if (scalar.kind == DEUS_JSON_STRING) {
-                stack[sp++] = (Value){V_STRING, scalar.string, scalar.string_length, NULL, 0};
+                stack[sp++] = (Value){V_STRING, scalar.string, scalar.string_length, NULL, 0, {0}};
                 scalar.string = NULL;
             } else if (scalar.kind == DEUS_JSON_I64)
-                stack[sp++] = (Value){V_I64, NULL, 0u, NULL, scalar.integer};
+                stack[sp++] = (Value){V_I64, NULL, 0u, NULL, scalar.integer, {0}};
             else if (scalar.kind == DEUS_JSON_BOOL)
-                stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, scalar.boolean ? 1 : 0};
-            else stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0};
+                stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, scalar.boolean ? 1 : 0, {0}};
+            else stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0, {0}};
             deus_json_scalar_dispose(&scalar);
         } else if (in.opcode == DEUS_EMIT) {
             Value value;

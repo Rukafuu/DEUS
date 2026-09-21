@@ -120,8 +120,12 @@ static DeusExpressionNode *parse_coalesce(ExpressionParser *parser) {
 
 int deus_parse_expression(const char *source, size_t length, DeusExpressionNode **out,
                           DeusDiagnostic *diagnostic) {
-    ExpressionParser parser = {0}; *out = NULL; deus_lexer_init(&parser.lexer, source, length); parser.diagnostic = diagnostic;
-    if (!next(&parser)) return 0; *out = parse_coalesce(&parser);
+    ExpressionParser parser = {0};
+    *out = NULL;
+    deus_lexer_init(&parser.lexer, source, length);
+    parser.diagnostic = diagnostic;
+    if (!next(&parser)) return 0;
+    *out = parse_coalesce(&parser);
     if (!*out || parser.token.kind != DEUS_TOKEN_EOF) {
         if (*out && !diagnostic->message[0]) snprintf(diagnostic->message, sizeof(diagnostic->message), "unexpected token after expression");
         deus_expression_free(*out); *out = NULL; deus_token_dispose(&parser.token); return 0;
