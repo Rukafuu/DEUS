@@ -22,6 +22,8 @@ void deus_expression_free(DeusExpressionNode *expression) {
     if (!expression) return;
     deus_expression_free(expression->left);
     deus_expression_free(expression->right);
+    deus_expression_free(expression->object);
+    deus_expression_free(expression->accessor);
     if (expression->kind == DEUS_EXPRESSION_LITERAL &&
         expression->literal_kind == DEUS_AST_EXPRESSION_STRING) free(expression->literal.string);
     free(expression->symbol);

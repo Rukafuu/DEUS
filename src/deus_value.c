@@ -290,6 +290,54 @@ static int grow_array(DeusValueContext *context, void **items, size_t item_size,
     *items = next; *capacity = next_capacity; return 1;
 }
 
+/* Collections are exposed as reference-counted values. Detach before a
+ * mutation so an API-level copy remains a stable snapshot. */
+static int detach_collection(DeusValue *value) {
+    DeusValueObject *source, *copy;
+    size_t count, index;
+    if (!value || (value->kind != DEUS_VALUE_LIST && value->kind != DEUS_VALUE_RECORD) ||
+        !value->as.object || value->as.object->references == 1u) return 1;
+    source = value->as.object;
+    copy = object_create(source->context, source->kind);
+    if (!copy) return 0;
+    copy->depth = source->depth;
+    if (source->kind == DEUS_VALUE_LIST) {
+        count = source->as.list.count;
+        if (count) {
+            copy->as.list.items = (DeusValue *)context_alloc(copy->context, count * sizeof(*copy->as.list.items));
+            if (!copy->as.list.items) { context_free(copy->context, copy, sizeof(*copy)); return 0; }
+            copy->as.list.capacity = count;
+            for (index = 0; index < count; index++) {
+                deus_value_copy(&copy->as.list.items[index], &source->as.list.items[index]);
+                copy->as.list.count++;
+            }
+        }
+    } else {
+        count = source->as.record.count;
+        if (count) {
+            copy->as.record.fields = (DeusRecordField *)context_alloc(copy->context, count * sizeof(*copy->as.record.fields));
+            if (!copy->as.record.fields) { context_free(copy->context, copy, sizeof(*copy)); return 0; }
+            copy->as.record.capacity = count;
+            for (index = 0; index < count; index++) {
+                const DeusRecordField *source_field = &source->as.record.fields[index];
+                DeusRecordField *copy_field = &copy->as.record.fields[index];
+                copy_field->key = (char *)context_alloc(copy->context, source_field->key_length + 1u);
+                if (!copy_field->key) {
+                    DeusValue partial = {DEUS_VALUE_RECORD, {.object = copy}};
+                    deus_value_dispose(&partial);
+                    return 0;
+                }
+                memcpy(copy_field->key, source_field->key, source_field->key_length + 1u);
+                copy_field->key_length = source_field->key_length;
+                deus_value_copy(&copy_field->value, &source_field->value);
+                copy->as.record.count++;
+            }
+        }
+    }
+    source->references--;
+    value->as.object = copy;
+    return 1;
+}
 int deus_value_list_append(DeusValue *list, const DeusValue *item) {
     DeusValueObject *object; uint32_t depth;
     if (!list || list->kind != DEUS_VALUE_LIST || !list->as.object || !item) return 0;
@@ -298,6 +346,8 @@ int deus_value_list_append(DeusValue *list, const DeusValue *item) {
     if (object->as.list.count >= object->context->limits.max_list_items) { set_error(object->context, "list item limit exceeded"); return 0; }
     depth = value_depth(item) + 1u;
     if (depth > object->context->limits.max_depth) { set_error(object->context, "value depth limit exceeded"); return 0; }
+    if (!detach_collection(list)) return 0;
+    object = list->as.object;
     if (object->as.list.count == object->as.list.capacity &&
         !grow_array(object->context, (void **)&object->as.list.items, sizeof(*object->as.list.items), object->as.list.count, &object->as.list.capacity)) return 0;
     deus_value_copy(&object->as.list.items[object->as.list.count++], item);
@@ -320,6 +370,8 @@ int deus_value_record_set(DeusValue *record, const char *key, size_t key_length,
     if (!utf8_valid(key, key_length)) { set_error(object->context, "invalid UTF-8 record key"); return 0; }
     depth = value_depth(value) + 1u;
     if (depth > object->context->limits.max_depth) { set_error(object->context, "value depth limit exceeded"); return 0; }
+    if (!detach_collection(record)) return 0;
+    object = record->as.object;
     for (size_t i = 0; i < object->as.record.count; i++) {
         DeusRecordField *field = &object->as.record.fields[i];
         if (field->key_length == key_length && !memcmp(field->key, key, key_length)) {
@@ -364,52 +416,81 @@ const char *deus_value_error_message(const DeusValue *value, size_t *length) {
     *length = value->as.object->as.error.length; return value->as.object->as.error.message;
 }
 
-static int write_json_string(FILE *output, const unsigned char *data, size_t length) {
-    if (fputc('"', output) == EOF) return 0;
-    for (size_t index = 0; index < length; index++) {
-        unsigned char byte = data[index];
-        if (byte == '"' || byte == '\\') { if (fputc('\\', output) == EOF || fputc(byte, output) == EOF) return 0; }
-        else if (byte == '\b') { if (fputs("\\b", output) == EOF) return 0; }
-        else if (byte == '\f') { if (fputs("\\f", output) == EOF) return 0; }
-        else if (byte == '\n') { if (fputs("\\n", output) == EOF) return 0; }
-        else if (byte == '\r') { if (fputs("\\r", output) == EOF) return 0; }
-        else if (byte == '\t') { if (fputs("\\t", output) == EOF) return 0; }
-        else if (byte < 0x20u) { if (fprintf(output, "\\u%04X", (unsigned)byte) < 0) return 0; }
-        else if (fputc(byte, output) == EOF) return 0;
-    }
-    return fputc('"', output) != EOF;
+static int write_bytes(DeusValueWrite write, void *context,
+                       const void *data, size_t length) {
+    return !length || write(context, data, length);
 }
 
-static int write_json_value(const DeusValue *value, FILE *output, uint32_t depth) {
+static int write_json_string(DeusValueWrite write, void *context,
+                             const unsigned char *data, size_t length) {
+    static const char quote = '"';
+    if (!write_bytes(write, context, &quote, 1u)) return 0;
+    for (size_t index = 0; index < length; index++) {
+        unsigned char byte = data[index];
+        if (byte == '"' || byte == '\\') {
+            const unsigned char escaped[2] = {'\\', byte};
+            if (!write_bytes(write, context, escaped, sizeof(escaped))) return 0;
+        } else if (byte == '\b') { if (!write_bytes(write, context, "\\b", 2u)) return 0; }
+        else if (byte == '\f') { if (!write_bytes(write, context, "\\f", 2u)) return 0; }
+        else if (byte == '\n') { if (!write_bytes(write, context, "\\n", 2u)) return 0; }
+        else if (byte == '\r') { if (!write_bytes(write, context, "\\r", 2u)) return 0; }
+        else if (byte == '\t') { if (!write_bytes(write, context, "\\t", 2u)) return 0; }
+        else if (byte < 0x20u) {
+            char escaped[7];
+            int count = snprintf(escaped, sizeof(escaped), "\\u%04X", (unsigned)byte);
+            if (count != 6 || !write_bytes(write, context, escaped, 6u)) return 0;
+        } else if (!write_bytes(write, context, &byte, 1u)) return 0;
+    }
+    return write_bytes(write, context, &quote, 1u);
+}
+
+static int write_json_value(const DeusValue *value, DeusValueWrite write,
+                            void *context, uint32_t depth) {
+    char integer[32];
     if (!value || depth > DEUS_DEFAULT_VALUE_DEPTH) return 0;
-    if (value->kind == DEUS_VALUE_NULL) return fputs("null", output) != EOF;
-    if (value->kind == DEUS_VALUE_BOOL) return fputs(value->as.boolean ? "true" : "false", output) != EOF;
-    if (value->kind == DEUS_VALUE_I64) return fprintf(output, "%lld", (long long)value->as.integer) >= 0;
+    if (value->kind == DEUS_VALUE_NULL) return write_bytes(write, context, "null", 4u);
+    if (value->kind == DEUS_VALUE_BOOL) return write_bytes(write, context, value->as.boolean ? "true" : "false", value->as.boolean ? 4u : 5u);
+    if (value->kind == DEUS_VALUE_I64) {
+        int count = snprintf(integer, sizeof(integer), "%lld", (long long)value->as.integer);
+        return count > 0 && write_bytes(write, context, integer, (size_t)count);
+    }
     if (value->kind == DEUS_VALUE_STRING)
-        return write_json_string(output, value->as.object->as.blob.data, value->as.object->as.blob.length);
+        return write_json_string(write, context, value->as.object->as.blob.data, value->as.object->as.blob.length);
     if (value->kind == DEUS_VALUE_BYTES || value->kind == DEUS_VALUE_DOCUMENT ||
         value->kind == DEUS_VALUE_FUTURE || value->kind == DEUS_VALUE_ERROR) return 0;
     if (value->kind == DEUS_VALUE_LIST) {
-        if (fputc('[', output) == EOF) return 0;
+        if (!write_bytes(write, context, "[", 1u)) return 0;
         for (size_t index = 0; index < value->as.object->as.list.count; index++) {
-            if ((index && fputc(',', output) == EOF) ||
-                !write_json_value(&value->as.object->as.list.items[index], output, depth + 1u)) return 0;
+            if ((index && !write_bytes(write, context, ",", 1u)) ||
+                !write_json_value(&value->as.object->as.list.items[index], write, context, depth + 1u)) return 0;
         }
-        return fputc(']', output) != EOF;
+        return write_bytes(write, context, "]", 1u);
     }
     if (value->kind == DEUS_VALUE_RECORD) {
-        if (fputc('{', output) == EOF) return 0;
+        if (!write_bytes(write, context, "{", 1u)) return 0;
         for (size_t index = 0; index < value->as.object->as.record.count; index++) {
             const DeusRecordField *field = &value->as.object->as.record.fields[index];
-            if ((index && fputc(',', output) == EOF) ||
-                !write_json_string(output, (const unsigned char *)field->key, field->key_length) ||
-                fputc(':', output) == EOF || !write_json_value(&field->value, output, depth + 1u)) return 0;
+            if ((index && !write_bytes(write, context, ",", 1u)) ||
+                !write_json_string(write, context, (const unsigned char *)field->key, field->key_length) ||
+                !write_bytes(write, context, ":", 1u) ||
+                !write_json_value(&field->value, write, context, depth + 1u)) return 0;
         }
-        return fputc('}', output) != EOF;
+        return write_bytes(write, context, "}", 1u);
     }
     return 0;
 }
 
+static int file_write(void *context, const void *data, size_t length) {
+    FILE *output = (FILE *)context;
+    return fwrite(data, 1u, length, output) == length;
+}
+
+int deus_value_write_json_to(const DeusValue *value, DeusValueWrite write,
+                             void *context) {
+    return write && write_json_value(value, write, context, 0u);
+}
+
 int deus_value_write_json(const DeusValue *value, FILE *output) {
-    return output && write_json_value(value, output, 0u) && !ferror(output);
+    return output && deus_value_write_json_to(value, file_write, output) &&
+           !ferror(output);
 }

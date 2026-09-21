@@ -1,17 +1,22 @@
 #include "deus_compiler.h"
-#include "deus_layout.h"
-
-#include <stdlib.h>
+#include "deus_source_lower.h"
+#include "deus_source_parser.h"
 
 int deus_parse_source(const char *source, size_t length, DeusProgram *out,
                       DeusDiagnostic *diagnostic) {
     DeusAstProgram ast;
-    char *lowered = NULL; size_t lowered_length = 0u; int was_lowered = 0, result;
-    if (!deus_layout_lower(source, length, &lowered, &lowered_length, &was_lowered, diagnostic)) return 0;
-    if (was_lowered) { source = lowered; length = lowered_length; }
-    if (!deus_parse_ast(source, length, &ast, diagnostic)) { free(lowered); return 0; }
+    DeusSourceAst source_ast;
+    int result;
+    if (deus_source_is_modern(source, length)) {
+        if (!deus_source_parse_modern(source, length, &source_ast, diagnostic))
+            return 0;
+        if (!deus_source_lower(&source_ast, &ast, diagnostic)) {
+            deus_source_ast_free(&source_ast);
+            return 0;
+        }
+        deus_source_ast_free(&source_ast);
+    } else if (!deus_parse_ast(source, length, &ast, diagnostic)) return 0;
     result = deus_analyze_and_generate(&ast, out, diagnostic);
     deus_ast_free(&ast);
-    free(lowered);
     return result;
 }

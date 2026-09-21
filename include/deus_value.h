@@ -39,6 +39,7 @@ typedef struct {
 } DeusValueLimits;
 
 typedef void (*DeusValueFinalizer)(void *payload);
+typedef int (*DeusValueWrite)(void *context, const void *data, size_t length);
 
 DeusValueLimits deus_value_default_limits(void);
 DeusValueContext *deus_value_context_create(const DeusValueLimits *limits);
@@ -81,5 +82,7 @@ void *deus_value_future_payload(const DeusValue *value);
 int64_t deus_value_error_code(const DeusValue *value);
 const char *deus_value_error_message(const DeusValue *value, size_t *length);
 int deus_value_write_json(const DeusValue *value, FILE *output);
+int deus_value_write_json_to(const DeusValue *value, DeusValueWrite write,
+                             void *context);
 
 #endif

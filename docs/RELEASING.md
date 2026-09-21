@@ -1,5 +1,9 @@
 # Local Windows release
 
+Release planning and release announcements are tracked through GitHub Issues.
+Stable releases require maintainer review of test results, archive contents,
+supported-environment validation, signing, and security disclosure readiness.
+
 This procedure creates a local, unsigned DEUS distribution. It does not upload,
 publish, sign, or download anything.
 

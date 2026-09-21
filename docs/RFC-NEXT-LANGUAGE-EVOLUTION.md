@@ -1,19 +1,20 @@
 # RFC-NEXT: Structured retrieval language evolution
 
-- Status: Proposed
+- Status: Accepted and implemented
 - Investigation completed: 2026-08-24
 - First increment selected: `limits:`
 - Source compatibility: additive
 - Bytecode ABI impact of first increment: none
 - Host ABI impact of first increment: none
-- Implementation status: not started
+- Implementation completed: 2026-08-24
 
 ## Purpose
 
 This RFC is the contract for the next language increment after indented flows.
-It records the parallel language, parser, type-system, VM/ABI, retrieval-domain,
-and tooling investigations. This round intentionally changes no compiler, VM,
-editor, or runtime behavior.
+It records the language, parser, type-system, VM/ABI, retrieval-domain, and
+tooling investigations that selected `limits:` as the first structural block.
+The increment changes the compiler frontend, formatter, documentation, and
+editor support while deliberately leaving the VM and both ABIs unchanged.
 
 DEUS remains a specialized language for bounded information acquisition,
 retrieval, extraction, composition, filtering, evaluation, ranking, and
@@ -26,9 +27,9 @@ The current modern frontend is:
 
 ```text
 source
--> textual flow lowering
--> whitespace-insensitive lexer
--> flat statement AST + recursive Expression AST
+-> structural Source AST + explicit layout events
+-> validated lowering to the Core AST
+-> flat instruction AST + recursive Expression AST
 -> semantic analysis
 -> ABI v1 bytecode
 -> bounded VM and authorized host
@@ -36,13 +37,14 @@ source
 
 The investigation established the following constraints:
 
-1. The lexer has no `NEWLINE`, `INDENT`, or `DEDENT` tokens.
-2. `deus_layout_lower` recognizes one top-level `flow`, removes four spaces,
-   replaces the header with `genesis`, and appends `halt`.
-3. Additional indentation is currently ignored by the ordinary lexer; nested
-   blocks therefore have no structural representation.
-4. The source AST is a flat instruction array. Structured literals are already
-   desugared into hidden locals and mutations during parsing.
+1. The modern frontend materializes `LINE`, `INDENT`, `DEDENT`, and `EOF`
+   events in a Source AST before Core parsing.
+2. Source spans are retained across structural validation and lowering.
+3. `limits:` is represented structurally and lowers to the existing
+   `LIMIT`/`RETRY`/`BACKOFF`/`RATE` Core instructions.
+4. Core structured literals still desugar into hidden locals and mutations;
+   fragment parsing shares a hidden-symbol base so separate fragments cannot
+   collide.
 5. Pure expressions are limited to one physical line and currently lack
    arithmetic, member access, parameters, and item scopes.
 6. Semantic collection types are only `List` and `Record`; element and record
