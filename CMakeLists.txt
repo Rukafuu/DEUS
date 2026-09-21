@@ -31,6 +31,8 @@ add_library(deuscore STATIC
   src/deus_source_lower.c
   src/deus_source.c
   src/deus_value.c
+  src/deus_type.c
+  src/deus_semantic_types.c)
   src/deus_type.c)
   src/deus_host.c
   src/deus_execution.c
