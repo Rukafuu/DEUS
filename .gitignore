@@ -1,7 +1,4 @@
 ```
-# Build artifacts
-build/
-dist/
 *.o
 *.obj
 # Compiled and build artifacts
@@ -13,6 +10,9 @@ dist/
 *.dll
 *.exe
 *.out
+build/
+dist/
+```
 
 # Dependencies
 venv/
