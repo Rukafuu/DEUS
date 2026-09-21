@@ -1,3 +1,9 @@
+```
+# Build artifacts
+build/
+dist/
+*.o
+*.obj
 # Compiled and build artifacts
 *.o
 *.obj
@@ -6,6 +12,47 @@
 *.so
 *.dll
 *.exe
+*.out
+
+# Dependencies
+venv/
+.venv/
+__pycache__/
+*.egg-info/
+
+# C/C++ specific
+*.i
+*.ii
+*.s
+*.su
+*.gcda
+*.gcno
+*.gcov
+*.stackdump
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+```
 *.deusb
 
 # Build and generated project artifacts

@@ -30,6 +30,8 @@ add_library(deuscore STATIC
   src/deus_source_parser.c
   src/deus_source_lower.c
   src/deus_source.c
+  src/deus_value.c
+  src/deus_type.c)
   src/deus_host.c
   src/deus_execution.c
   src/deus_value.c)
@@ -85,6 +87,10 @@ if(WIN32)
   target_compile_definitions(deusvm PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
   target_link_libraries(deusvm PRIVATE winhttp)
 else()
+  # Non-Windows build: disable WinHTTP-dependent features
+  target_compile_definitions(deusvmcore PRIVATE DEUS_VM_NO_WINHTTP)
+  target_compile_definitions(deus PRIVATE DEUS_VM_NO_WINHTTP)
+  target_compile_definitions(deusvm PRIVATE DEUS_VM_NO_WINHTTP)
   message(STATUS "Building portable DEUS tooling without the WinHTTP reference runtime")
 endif()
 
