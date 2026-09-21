@@ -8,7 +8,7 @@ typedef struct { const char *name; uint8_t opcode; DeusAstOperandKind operand; }
 static const InstructionSpec SPECS[] = {
     {"omni", DEUS_OMNI, DEUS_AST_OPERAND_STRING}, {"genesis", DEUS_GENESIS, DEUS_AST_OPERAND_NONE},
     {"hunt", DEUS_HUNT, DEUS_AST_OPERAND_STRING}, {"reap", DEUS_REAP, DEUS_AST_OPERAND_STRING},
-    {"halt", DEUS_HALT, DEUS_AST_OPERAND_NONE}, {"emit", DEUS_EMIT, DEUS_AST_OPERAND_NONE},
+    {"halt", DEUS_HALT, DEUS_AST_OPERAND_NONE}, {"emit", DEUS_EMIT, DEUS_AST_OPERAND_NONE}, {"debug", DEUS_DEBUG, DEUS_AST_OPERAND_NONE},
     {"fork", DEUS_FORK, DEUS_AST_OPERAND_STRING}, {"await", DEUS_AWAIT, DEUS_AST_OPERAND_NONE},
     {"join", DEUS_JOIN, DEUS_AST_OPERAND_U32}, {"limit", DEUS_LIMIT, DEUS_AST_OPERAND_U32},
     {"retry", DEUS_RETRY, DEUS_AST_OPERAND_U32}, {"backoff", DEUS_BACKOFF, DEUS_AST_OPERAND_U32},
@@ -24,6 +24,7 @@ static int pure_expression_start(const DeusToken *token) {
     return token->kind == DEUS_TOKEN_STRING || token->kind == DEUS_TOKEN_NUMBER ||
            token->kind == DEUS_TOKEN_LPAREN ||
            (token->kind == DEUS_TOKEN_IDENTIFIER &&
+            !same_word(token, "call") &&
             !same_word(token, "hunt") && !same_word(token, "reap") && !same_word(token, "json") &&
             !same_word(token, "get") && !same_word(token, "get?") && !same_word(token, "at") &&
             !same_word(token, "at?") && !same_word(token, "record") && !same_word(token, "list"));
@@ -87,11 +88,16 @@ static int copy_symbol(const DeusToken *token, DeusAstInstruction *instruction,
 
 static int parse_structured_literal(DeusLexer *lexer, DeusAstProgram *program,
                                     DeusAstInstruction *bind, int is_record, uint32_t depth,
+                                    uint32_t hidden_symbol_base,
                                     DeusDiagnostic *diagnostic);
 
 static int hidden_symbol(DeusAstProgram *program, DeusAstInstruction *bind,
-                         unsigned line, unsigned column, DeusDiagnostic *diagnostic) {
-    char name[48]; int written = snprintf(name, sizeof(name), "$literal_%u", program->count);
+                         uint32_t hidden_symbol_base, unsigned line,
+                         unsigned column, DeusDiagnostic *diagnostic) {
+    uint32_t identifier; char name[48]; int written;
+    if (program->count > UINT32_MAX - hidden_symbol_base) return 0;
+    identifier = hidden_symbol_base + program->count;
+    written = snprintf(name, sizeof(name), "$literal_%u", identifier);
     if (written < 0 || (size_t)written >= sizeof(name)) return 0;
     bind->symbol = (char *)malloc((size_t)written + 1u);
     if (!bind->symbol) return 0;
@@ -101,7 +107,8 @@ static int hidden_symbol(DeusAstProgram *program, DeusAstInstruction *bind,
 }
 
 static int literal_value_symbol(DeusLexer *lexer, DeusAstProgram *program, DeusToken *value,
-                                uint32_t depth, char **symbol, uint32_t *symbol_length,
+                                uint32_t depth, uint32_t hidden_symbol_base,
+                                char **symbol, uint32_t *symbol_length,
                                 DeusDiagnostic *diagnostic) {
     DeusAstInstruction generated = {0};
     if (value->length > UINT32_MAX) {
@@ -114,7 +121,8 @@ static int literal_value_symbol(DeusLexer *lexer, DeusAstProgram *program, DeusT
         memcpy(*symbol, value->start, value->length); (*symbol)[value->length] = '\0';
         *symbol_length = (uint32_t)value->length; return 1;
     }
-    if (!hidden_symbol(program, &generated, value->line, value->column, diagnostic)) return 0;
+    if (!hidden_symbol(program, &generated, hidden_symbol_base,
+                       value->line, value->column, diagnostic)) return 0;
     if (value->kind == DEUS_TOKEN_STRING) {
         generated.expression_kind = DEUS_AST_EXPRESSION_STRING;
         generated.operand_kind = DEUS_AST_OPERAND_STRING; generated.operand.string = value->owned;
@@ -133,7 +141,9 @@ static int literal_value_symbol(DeusLexer *lexer, DeusAstProgram *program, DeusT
             snprintf(diagnostic->message, sizeof(diagnostic->message), "structured literal exceeds 32 levels");
             free(generated.symbol); return 0;
         }
-        if (!parse_structured_literal(lexer, program, &generated, nested_record, depth + 1u, diagnostic)) return 0;
+        if (!parse_structured_literal(lexer, program, &generated, nested_record,
+                                      depth + 1u, hidden_symbol_base,
+                                      diagnostic)) return 0;
         goto copy_generated_symbol;
     } else {
         diagnostic->line = value->line; diagnostic->column = value->column;
@@ -151,6 +161,7 @@ copy_generated_symbol:
 
 static int parse_structured_literal(DeusLexer *lexer, DeusAstProgram *program,
                                     DeusAstInstruction *bind, int is_record, uint32_t depth,
+                                    uint32_t hidden_symbol_base,
                                     DeusDiagnostic *diagnostic) {
     DeusToken current = {0}; DeusTokenKind closing = is_record ? DEUS_TOKEN_RBRACE : DEUS_TOKEN_RBRACKET;
     bind->expression_kind = is_record ? DEUS_AST_EXPRESSION_RECORD : DEUS_AST_EXPRESSION_LIST;
@@ -185,6 +196,7 @@ static int parse_structured_literal(DeusLexer *lexer, DeusAstProgram *program,
             if (!deus_lexer_next(lexer, &value, diagnostic)) goto failed;
         } else value = current, memset(&current, 0, sizeof(current));
         if (!literal_value_symbol(lexer, program, &value, depth,
+                                  hidden_symbol_base,
                                   &mutation.expression_symbol, &mutation.expression_symbol_length,
                                   diagnostic)) goto failed;
         deus_token_dispose(&value); deus_token_dispose(&current);
@@ -211,8 +223,10 @@ failed:
     }
 }
 
-int deus_parse_ast(const char *source, size_t length, DeusAstProgram *out,
-                   DeusDiagnostic *diagnostic) {
+int deus_parse_ast_fragment(const char *source, size_t length,
+                            uint32_t hidden_symbol_base,
+                            DeusAstProgram *out,
+                            DeusDiagnostic *diagnostic) {
     DeusLexer lexer; DeusToken token;
     memset(out, 0, sizeof(*out)); deus_lexer_init(&lexer, source, length);
     for (;;) {
@@ -300,11 +314,14 @@ int deus_parse_ast(const char *source, size_t length, DeusAstProgram *out,
                     deus_token_dispose(&first);
                 }
                 if (!instruction.expression) {
-                if (!deus_lexer_next(&lexer, &operand, diagnostic)) { free(instruction.symbol); goto failed; }
+                    if (!deus_lexer_next(&lexer, &operand, diagnostic)) { free(instruction.symbol); goto failed; }
                 if (operand.kind == DEUS_TOKEN_LBRACE || operand.kind == DEUS_TOKEN_LBRACKET) {
                     int is_record = operand.kind == DEUS_TOKEN_LBRACE;
                     deus_token_dispose(&operand);
-                    if (!parse_structured_literal(&lexer, out, &instruction, is_record, 1u, diagnostic)) goto failed;
+                    if (!parse_structured_literal(&lexer, out, &instruction,
+                                                  is_record, 1u,
+                                                  hidden_symbol_base,
+                                                  diagnostic)) goto failed;
                     continue;
                 } else if (operand.kind == DEUS_TOKEN_STRING && operand.length <= UINT32_MAX) {
                     instruction.expression_kind = DEUS_AST_EXPRESSION_STRING;
@@ -338,6 +355,35 @@ int deus_parse_ast(const char *source, size_t length, DeusAstProgram *out,
                     instruction.operand_kind = DEUS_AST_OPERAND_STRING;
                     instruction.operand.string = url.owned; instruction.string_length = (uint32_t)url.length;
                     url.owned = NULL; deus_token_dispose(&url);
+                } else if (operand.kind == DEUS_TOKEN_IDENTIFIER && same_word(&operand, "call")) {
+                    DeusToken adapter = {0}, input = {0};
+                    if (!deus_lexer_next(&lexer, &adapter, diagnostic) ||
+                        adapter.kind != DEUS_TOKEN_STRING || adapter.length > UINT32_MAX ||
+                        !deus_lexer_next(&lexer, &input, diagnostic) ||
+                        input.kind != DEUS_TOKEN_IDENTIFIER || input.length > UINT32_MAX) {
+                        diagnostic->line = input.line ? input.line : adapter.line;
+                        diagnostic->column = input.column ? input.column : adapter.column;
+                        snprintf(diagnostic->message, sizeof(diagnostic->message),
+                                 "call expression requires a quoted adapter and input local");
+                        deus_token_dispose(&input); deus_token_dispose(&adapter);
+                        deus_token_dispose(&operand); free(instruction.symbol); goto failed;
+                    }
+                    instruction.expression_symbol = (char *)malloc(input.length + 1u);
+                    if (!instruction.expression_symbol) {
+                        diagnostic->line = input.line; diagnostic->column = input.column;
+                        snprintf(diagnostic->message, sizeof(diagnostic->message), "out of memory");
+                        deus_token_dispose(&input); deus_token_dispose(&adapter);
+                        deus_token_dispose(&operand); free(instruction.symbol); goto failed;
+                    }
+                    memcpy(instruction.expression_symbol, input.start, input.length);
+                    instruction.expression_symbol[input.length] = '\0';
+                    instruction.expression_symbol_length = (uint32_t)input.length;
+                    instruction.expression_kind = DEUS_AST_EXPRESSION_CALL;
+                    instruction.operand_kind = DEUS_AST_OPERAND_STRING;
+                    instruction.operand.string = adapter.owned;
+                    instruction.string_length = (uint32_t)adapter.length;
+                    adapter.owned = NULL;
+                    deus_token_dispose(&input); deus_token_dispose(&adapter);
                 } else if (operand.kind == DEUS_TOKEN_IDENTIFIER &&
                            (same_word(&operand, "reap") || same_word(&operand, "json"))) {
                     int is_json = same_word(&operand, "json");
@@ -484,4 +530,9 @@ int deus_parse_ast(const char *source, size_t length, DeusAstProgram *out,
     }
 failed:
     deus_token_dispose(&token); deus_ast_free(out); return 0;
+}
+
+int deus_parse_ast(const char *source, size_t length, DeusAstProgram *out,
+                   DeusDiagnostic *diagnostic) {
+    return deus_parse_ast_fragment(source, length, 0u, out, diagnostic);
 }

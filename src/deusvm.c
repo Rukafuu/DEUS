@@ -41,6 +41,52 @@ struct HuntTask {
 
 static int fail(const char *message) { fprintf(stderr, "deusvm: %s\n", message); return 1; }
 
+static int checked_i64(uint8_t opcode, int64_t left, int64_t right,
+                       int64_t *result, const char **error) {
+    switch (opcode) {
+    case DEUS_ADD_I64:
+        if ((right > 0 && left > INT64_MAX - right) ||
+            (right < 0 && left < INT64_MIN - right)) { *error = "I64 addition overflow"; return 0; }
+        *result = left + right;
+        return 1;
+    case DEUS_SUB_I64:
+        if ((right > 0 && left < INT64_MIN + right) ||
+            (right < 0 && left > INT64_MAX + right)) { *error = "I64 subtraction overflow"; return 0; }
+        *result = left - right;
+        return 1;
+    case DEUS_MUL_I64:
+        if ((left == INT64_MIN && right == -1) || (right == INT64_MIN && left == -1) ||
+            (left > 0 && ((right > 0 && left > INT64_MAX / right) ||
+                          (right < 0 && right < INT64_MIN / left))) ||
+            (left < 0 && ((right > 0 && left < INT64_MIN / right) ||
+                          (right < 0 && left < INT64_MAX / right)))) { *error = "I64 multiplication overflow"; return 0; }
+        *result = left * right;
+        return 1;
+    case DEUS_DIV_I64:
+        if (!right) { *error = "I64 division by zero"; return 0; }
+        if (left == INT64_MIN && right == -1) { *error = "I64 division overflow"; return 0; }
+        *result = left / right;
+        return 1;
+    case DEUS_MOD_I64:
+        if (!right) { *error = "I64 remainder by zero"; return 0; }
+        if (left == INT64_MIN && right == -1) { *error = "I64 remainder overflow"; return 0; }
+        *result = left % right;
+        return 1;
+    default:
+        *error = "unknown I64 arithmetic operation";
+        return 0;
+    }
+}
+
+static int file_output_write(void *context, const void *data, size_t length) {
+    return fwrite(data, 1u, length, (FILE *)context) == length;
+}
+
+static int output_write(const DeusOutputSink *output, const void *data,
+                        size_t length) {
+    return !length || output->write(output->context, data, length);
+}
+
 static wchar_t *widen(const char *source) {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
     if (!n) return NULL;
@@ -146,10 +192,8 @@ static char *host_hunt_once(Runtime *rt, const char *url, size_t *out_len,
                             char *error, size_t cap) {
     DeusHostDocument document = {0}; char *copy = NULL;
     if (!rt->host) return native_hunt_once(rt, url, out_len, error, cap);
-    if (rt->host->abi_version != DEUS_HOST_ABI_VERSION ||
-        !(rt->host->capabilities & DEUS_HOST_CAP_NETWORK) || !rt->host->hunt) {
-        snprintf(error, cap, "host does not grant network capability"); return NULL;
-    }
+    if (!deus_host_validate(rt->host, DEUS_HOST_CAP_NETWORK, error, cap))
+        return NULL;
     if (cap) error[0] = '\0';
     if (!rt->host->hunt(rt->host->context, url, strlen(url), &document, error, cap)) {
         if (cap && !error[0]) snprintf(error, cap, "host hunt failed");
@@ -250,6 +294,30 @@ static int attr_match(const char *tag, size_t n, const char *name, const char *v
     return 0;
 }
 
+static int tag_name_match(const char *html, size_t begin, size_t end,
+                          const char *name, size_t name_length) {
+    size_t cursor = begin;
+    while (cursor < end && (html[cursor] == ' ' || html[cursor] == '\t')) cursor++;
+    size_t name_end = cursor;
+    while (name_end < end && isalnum((unsigned char)html[name_end])) name_end++;
+    return name_end - cursor == name_length &&
+           !_strnicmp(html + cursor, name, name_length);
+}
+
+static int reap_append(char **out, size_t *capacity, size_t *used,
+                       const char *text, size_t text_length) {
+    if (!text_length) return 1;
+    if (*used + text_length + 2u > *capacity) {
+        size_t next_capacity = *capacity;
+        while (*used + text_length + 2u > next_capacity) next_capacity *= 2u;
+        char *next = (char *)realloc(*out, next_capacity);
+        if (!next) return 0;
+        *out = next; *capacity = next_capacity;
+    }
+    memcpy(*out + *used, text, text_length); *used += text_length;
+    return 1;
+}
+
 static char *reap(const char *html, size_t len, const char *selector, size_t *out_len) {
     char mode = 0; const char *needle = selector;
     if (*needle == '#' || *needle == '.') mode = *needle++;
@@ -265,13 +333,34 @@ static char *reap(const char *html, size_t len, const char *selector, size_t *ou
                   : mode == '.' ? attr_match(html + i + 1, close - i - 1, "class", needle, 1)
                   : (ne - name == nn && !_strnicmp(html + name, needle, nn));
         if (!match) { i = close + 1; continue; }
-        size_t end = close + 1; while (end < len && html[end] != '<') end++;
-        size_t text = end - (close + 1);
-        if (text) {
-            if (used + text + 2 > cap) { while (used + text + 2 > cap) cap *= 2; char *next = (char *)realloc(out, cap); if (!next) { free(out); return NULL; } out = next; }
-            memcpy(out + used, html + close + 1, text); used += text; out[used++] = '\n';
+        size_t cursor = close + 1, text_begin = cursor, depth = 1;
+        while (cursor < len && depth) {
+            if (html[cursor] != '<') { cursor++; continue; }
+            if (!reap_append(&out, &cap, &used, html + text_begin, cursor - text_begin)) {
+                free(out); return NULL;
+            }
+            size_t tag_close = cursor + 1;
+            while (tag_close < len && html[tag_close] != '>') tag_close++;
+            if (tag_close >= len) { cursor = len; break; }
+            size_t tag_begin = cursor + 1;
+            int closing = tag_begin < tag_close && html[tag_begin] == '/';
+            if (closing) tag_begin++;
+            if (tag_name_match(html, tag_begin, tag_close, html + name, ne - name)) {
+                size_t tail = tag_close;
+                while (tail > tag_begin && (html[tail - 1] == ' ' || html[tail - 1] == '\t')) tail--;
+                if (closing) depth--;
+                else if (tail == tag_begin || html[tail - 1] != '/') depth++;
+            }
+            cursor = tag_close + 1; text_begin = cursor;
         }
-        i = end;
+        if (depth && text_begin < len &&
+            !reap_append(&out, &cap, &used, html + text_begin, len - text_begin)) {
+            free(out); return NULL;
+        }
+        if (used && out[used - 1] != '\n') {
+            if (!reap_append(&out, &cap, &used, "\n", 1u)) { free(out); return NULL; }
+        }
+        i = cursor;
     }
     out[used] = 0; *out_len = used; return out;
 }
@@ -332,6 +421,8 @@ static int url_unreserved(unsigned char byte) {
            (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' || byte == '_' || byte == '~';
 }
 
+static int runtime_call_adapter(const Runtime *runtime,const char *name,size_t length,const Value *input,DeusValueContext *context,Value *output,char *error,size_t cap){DeusValue value=deus_value_null(),result=deus_value_null();int ok;if(!runtime->host||runtime->host->abi_version!=DEUS_HOST_ABI_VERSION||!(runtime->host->capabilities&DEUS_HOST_CAP_ADAPTER_CALL)||!runtime->host->call){snprintf(error,cap,"runtime requires DeusHost adapter capability");return 0;}if(!value_as_managed(input,context,&value)){snprintf(error,cap,"adapter input is not serializable");return 0;}ok=runtime->host->call(runtime->host->context,name,length,&value,context,&result,error,cap);deus_value_dispose(&value);if(!ok){if(cap&&!error[0])snprintf(error,cap,"host adapter call failed");deus_value_dispose(&result);return 0;}if(!value_from_managed(&result,output)){snprintf(error,cap,"host adapter returned a non-serializable value");deus_value_dispose(&result);return 0;}deus_value_dispose(&result);return 1;}
+
 static int value_url_encode(Value *value) {
     char scalar[32]; const char *source = value->data; size_t length = value->len;
     if (value->kind == V_I64) {
@@ -353,16 +444,38 @@ static int value_url_encode(Value *value) {
     *value = (Value){V_STRING, encoded, used, NULL, 0}; return 1;
 }
 
-int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
-                                      const DeusHost *host) {
+int deus_vm_execute_program_with_options(const DeusProgram *input,
+                                         const DeusOutputSink *output,
+                                         const DeusHost *host,
+                                         const DeusExecutionOptions *options) {
     DeusProgram p = *input; char error[192];
+    if (!deus_validate_program(input, error, sizeof(error))) return fail(error);
+    if (!output || output->abi_version != DEUS_OUTPUT_ABI_VERSION ||
+        !output->write) return fail("invalid output sink");
+    if (!options || options->abi_version != DEUS_EXECUTION_ABI_VERSION ||
+        !options->instruction_limit ||
+        (options->deadline_ms && !options->now_ms))
+        return fail("invalid execution options");
     Runtime rt = {0}; rt.limit = 8; rt.retries = 2; rt.backoff_ms = 100; rt.host = host; InitializeCriticalSection(&rt.rate_lock);
-    Value stack[STACK_MAX] = {0}; size_t sp = 0; int began = 0, rc = 0;
+    Value stack[STACK_MAX] = {0}; uint32_t stack_origins[STACK_MAX]; size_t sp = 0; int began = 0, rc = 0;
     Value locals[DEUS_MAX_LOCALS] = {0}; unsigned char local_bound[DEUS_MAX_LOCALS] = {0};
+    for (uint32_t slot = 0u; slot < STACK_MAX; slot++) stack_origins[slot] = UINT32_MAX;
     DeusValueContext *value_context = deus_value_context_create(NULL);
     if (!value_context) { DeleteCriticalSection(&rt.rate_lock); return fail("value context allocation failed"); }
 
+    uint64_t instructions = 0u;
     for (uint32_t pc = 0; pc < p.code_count; pc++) {
+        if (instructions++ >= options->instruction_limit) {
+            rc = fail("instruction budget exhausted"); break;
+        }
+        if (options->should_cancel &&
+            options->should_cancel(options->context)) {
+            rc = fail("execution cancelled"); break;
+        }
+        if (options->deadline_ms &&
+            options->now_ms(options->context) >= options->deadline_ms) {
+            rc = fail("execution deadline exceeded"); break;
+        }
         DeusInstruction in = p.code[pc];
         const char *arg = in.operand < p.string_count ? p.strings[in.operand].data : "";
         size_t arg_length = in.operand < p.string_count ? p.strings[in.operand].len : 0u;
@@ -441,6 +554,19 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             }
             if (!value_from_managed(found, &extracted)) { rc = fail("structured value cannot be loaded"); break; }
             value_dispose(&stack[sp - 1u]); stack[sp - 1u] = extracted;
+        } else if (in.opcode >= DEUS_ADD_I64 && in.opcode <= DEUS_MOD_I64) {
+            Value left, right; int64_t result; const char *arithmetic_error;
+            if (sp < 2u) { rc = fail("I64 arithmetic requires two operands"); break; }
+            right = stack[--sp]; left = stack[--sp];
+            if (left.kind != V_I64 || right.kind != V_I64) {
+                value_dispose(&left); value_dispose(&right);
+                rc = fail("I64 arithmetic requires two I64 values"); break;
+            }
+            if (!checked_i64(in.opcode, left.scalar, right.scalar, &result, &arithmetic_error)) {
+                value_dispose(&left); value_dispose(&right); rc = fail(arithmetic_error); break;
+            }
+            value_dispose(&left); value_dispose(&right);
+            stack[sp++] = (Value){V_I64, NULL, 0u, NULL, result};
         } else if (in.opcode >= DEUS_EQUAL && in.opcode <= DEUS_COALESCE) {
             Value left, right; int result = 0;
             if (in.opcode == DEUS_BOOL_NOT) {
@@ -518,12 +644,20 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
             url = stack[--sp]; body = runtime_hunt(&rt, url.data, &length, error, sizeof(error)); value_dispose(&url);
             if (!body) { rc = fail(error); break; }
             stack[sp++] = (Value){V_DOCUMENT, body, length, NULL, 0, {0}};
+            stack[sp++] = (Value){V_DOCUMENT, body, length, NULL, 0};
+        } else if (in.opcode == DEUS_HOST_CALL) {
+            Value input, result;
+            if (!began || !sp || in.operand >= p.string_count) { rc = fail("invalid VM state at HOST_CALL"); break; }
+            input = stack[--sp];
+            if (!runtime_call_adapter(&rt, arg, arg_length, &input, value_context, &result, error, sizeof(error))) { value_dispose(&input); rc = fail(error); break; }
+            value_dispose(&input); stack[sp++] = result;
         } else if (in.opcode == DEUS_BIND) {
             if (!began || !sp || in.operand >= DEUS_MAX_LOCALS || local_bound[in.operand]) { rc = fail("invalid VM state at BIND"); break; }
             locals[in.operand] = stack[--sp]; memset(&stack[sp], 0, sizeof(stack[sp])); local_bound[in.operand] = 1u;
         } else if (in.opcode == DEUS_LOAD) {
             if (!began || sp == STACK_MAX || in.operand >= DEUS_MAX_LOCALS || !local_bound[in.operand] ||
                 !value_clone(&locals[in.operand], &stack[sp])) { rc = fail("invalid VM state at LOAD"); break; }
+            stack_origins[sp] = in.operand;
             sp++;
         } else if (in.opcode == DEUS_AWAIT) {
             if (!sp || stack[sp - 1].kind != V_FUTURE) { rc = fail("AWAIT expected future"); break; }
@@ -565,19 +699,24 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
                 stack[sp++] = (Value){V_BOOL, NULL, 0u, NULL, scalar.boolean ? 1 : 0, {0}};
             else stack[sp++] = (Value){V_NULL, NULL, 0u, NULL, 0, {0}};
             deus_json_scalar_dispose(&scalar);
-        } else if (in.opcode == DEUS_EMIT) {
-            Value value;
-            if (!sp) { rc = fail("EMIT expected a value"); break; }
+        } else if (in.opcode == DEUS_EMIT || in.opcode == DEUS_DEBUG) {
+            Value value; char scalar[32]; int length = 0; int emitted = 0;
+            if (!sp) { rc = fail(in.opcode == DEUS_EMIT ? "EMIT expected a value" : "DEBUG expected a value"); break; }
             value = stack[--sp];
-            if (value.kind == V_TEXT || value.kind == V_STRING) fwrite(value.data, 1, value.len, output);
-            else if (value.kind == V_NULL) fputs("null", output);
-            else if (value.kind == V_BOOL) fputs(value.scalar ? "true" : "false", output);
-            else if (value.kind == V_I64) fprintf(output, "%lld", (long long)value.scalar);
-            else if (value.kind == V_MANAGED) {
-                if (!deus_value_write_json(&value.managed, output)) { value_dispose(&value); rc = fail("EMIT failed to serialize compound value"); break; }
-            }
-            else { value_dispose(&value); rc = fail("EMIT cannot serialize this value"); break; }
+            if (in.opcode == DEUS_DEBUG) {
+                if (value.kind == V_TEXT || value.kind == V_STRING) emitted = fwrite(value.data, 1u, value.len, stderr) == value.len;
+                else if (value.kind == V_NULL) emitted = fputs("null", stderr) >= 0;
+                else if (value.kind == V_BOOL) emitted = fputs(value.scalar ? "true" : "false", stderr) >= 0;
+                else if (value.kind == V_I64) emitted = fprintf(stderr, "%lld", (long long)value.scalar) >= 0;
+                else if (value.kind == V_MANAGED) emitted = deus_value_write_json(&value.managed, stderr);
+            } else if (value.kind == V_TEXT || value.kind == V_STRING) emitted = output_write(output, value.data, value.len);
+            else if (value.kind == V_NULL) emitted = output_write(output, "null", 4u);
+            else if (value.kind == V_BOOL) emitted = output_write(output, value.scalar ? "true" : "false", value.scalar ? 4u : 5u);
+            else if (value.kind == V_I64) { length = snprintf(scalar, sizeof(scalar), "%lld", (long long)value.scalar); emitted = length > 0 && output_write(output, scalar, (size_t)length); }
+            else if (value.kind == V_MANAGED) emitted = deus_value_write_json_to(&value.managed, output->write, output->context);
+            else { value_dispose(&value); rc = fail(in.opcode == DEUS_EMIT ? "EMIT cannot serialize this value" : "DEBUG cannot serialize this value"); break; }
             value_dispose(&value);
+            if (!emitted) { rc = fail(in.opcode == DEUS_EMIT ? "output sink rejected EMIT" : "DEBUG output failed"); break; }
         } else if (in.opcode == DEUS_HALT) break;
     }
     while (sp) value_dispose(&stack[--sp]);
@@ -591,6 +730,20 @@ int deus_vm_execute_program_with_host(const DeusProgram *input, FILE *output,
 
 int deus_vm_execute_program(const DeusProgram *program, FILE *output) {
     return deus_vm_execute_program_with_host(program, output, NULL);
+}
+
+int deus_vm_execute_program_with_sink(const DeusProgram *program,
+                                      const DeusOutputSink *output,
+                                      const DeusHost *host) {
+    DeusExecutionOptions options = deus_execution_options_default();
+    return deus_vm_execute_program_with_options(program, output, host, &options);
+}
+
+int deus_vm_execute_program_with_host(const DeusProgram *program, FILE *output,
+                                      const DeusHost *host) {
+    DeusOutputSink sink = {DEUS_OUTPUT_ABI_VERSION, output, file_output_write};
+    if (!output) return fail("output stream is required");
+    return deus_vm_execute_program_with_sink(program, &sink, host);
 }
 
 #ifndef DEUS_VM_NO_MAIN
