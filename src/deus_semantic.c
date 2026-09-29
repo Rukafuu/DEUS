@@ -24,10 +24,9 @@ static int add_code(DeusProgram *program, uint8_t opcode, uint32_t operand) {
         ((size_t)program->code_count + 1u) * sizeof(*next));
     if (!next) return 0;
     program->code = next;
-    program->code[program->code_count - 1u] = (DeusInstruction){.opcode = opcode, .operand = operand, .immediate = 0};
+    program->code[program->code_count] = (DeusInstruction){.opcode = opcode, .operand = operand, .immediate = 0};
     program->code_count++;
     return 1;
-    program->code = next; program->code[program->code_count++] = (DeusInstruction){opcode, operand, 0}; return 1;
 }
 
 static int intern_string(DeusProgram *program, const char *value, uint32_t length, uint32_t *index) {
