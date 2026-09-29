@@ -88,9 +88,6 @@ if(WIN32)
   target_link_libraries(deusvm PRIVATE winhttp)
 else()
   # Non-Windows build: disable WinHTTP-dependent features
-  target_compile_definitions(deusvmcore PRIVATE DEUS_VM_NO_WINHTTP)
-  target_compile_definitions(deus PRIVATE DEUS_VM_NO_WINHTTP)
-  target_compile_definitions(deusvm PRIVATE DEUS_VM_NO_WINHTTP)
   message(STATUS "Building portable DEUS tooling without the WinHTTP reference runtime")
 endif()
 
