@@ -1,0 +1,17 @@
+name: Portable smoke ASan diagnosis
+
+on:
+  push:
+    branches: [debug/portable-smoke-asan]
+
+jobs:
+  portable-smoke-asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure with AddressSanitizer
+        run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
+      - name: Build
+        run: cmake --build build-asan --parallel
+      - name: Reproduce portable smoke failure
+        run: ASAN_OPTIONS=abort_on_error=1:detect_leaks=0 ./build-asan/deus run examples/structured_result.deus
