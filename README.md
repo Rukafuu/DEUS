@@ -106,13 +106,25 @@ and auto-closing pairs:
 cd editors\vscode
 npx @vscode/vsce package
 code --install-extension deus-language-0.1.0.vsix
-s capabilities and may currently provide `hunt` through
-`DEUS_HOST_CAP_NETWORK`. Returned documents are borrowed: the VM copies them under
-its 32 MiB response limit and invokes `release_document` exactly once. Host
-callbacks used by `FORK` must be thread-safe.
+```
+
+### Host ABI
+
+The Host ABI is the boundary between the bounded DEUS VM and an embedding
+application. An embedder supplies a `DeusHost` to
+`deus_vm_execute_program_with_host` and may validate it with
+`deus_host_validate` before loading programs.
+
+Host ABI v2 grants authority through explicit capabilities. A host with
+`DEUS_HOST_CAP_NETWORK` and a `hunt` callback may service `HUNT`, `FORK`, and
+`HUNT_VALUE`; naming a module does not grant that authority. Successful results
+are borrowed documents: the VM copies their bytes within the 32 MiB response
+limit and, when supplied, calls `release_document` exactly once. Callbacks used
+by concurrent retrieval must be thread-safe.
 
 `deus_vm_execute_program` remains the compatibility entry point and selects the
-native WinHTTP reference host. A supplied host does not initialize WinHTTP.
+native WinHTTP reference host. A supplied host does not initialize WinHTTP. See
+[`docs/HOST_ABI.md`](docs/HOST_ABI.md) for the complete contract.
 
 ## Value system
 
