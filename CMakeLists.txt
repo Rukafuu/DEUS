@@ -32,11 +32,9 @@ add_library(deuscore STATIC
   src/deus_source.c
   src/deus_value.c
   src/deus_type.c
-  src/deus_semantic_types.c)
-  src/deus_type.c)
+  src/deus_semantic_types.c
   src/deus_host.c
-  src/deus_execution.c
-  src/deus_value.c)
+  src/deus_execution.c)
 target_include_directories(deuscore PUBLIC include)
 target_include_directories(deuscore PRIVATE src)
 

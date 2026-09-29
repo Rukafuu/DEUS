@@ -225,7 +225,6 @@ int deus_parse_expression(const char *source, size_t length, DeusExpressionNode 
     *out = NULL;
     deus_lexer_init(&parser.lexer, source, length);
     parser.diagnostic = diagnostic;
-    ExpressionParser parser = {0}; *out = NULL; deus_lexer_init(&parser.lexer, source, length); parser.diagnostic = diagnostic;
     if (!next(&parser)) return 0;
     *out = parse_coalesce(&parser);
     if (!*out || parser.token.kind != DEUS_TOKEN_EOF) {
